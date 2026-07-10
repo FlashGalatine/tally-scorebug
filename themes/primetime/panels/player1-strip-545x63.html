@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=545, height=63" />
+  <title>Primetime — P1 Strip 545×63 (score + flag + name)</title>
+  <link rel="stylesheet" href="../theme.css" />
+  <style>
+    body { width: 545px; height: 63px; }
+  </style>
+</head>
+<body>
+  <div class="pt-strip pt-root p1">
+    <div class="pt-cell pt-plate pt-score"><div class="pt-value" id="score"></div></div>
+    <div class="pt-cell pt-plate pt-flag hidden" id="flag-cell"><img id="flag" alt="" draggable="false" /></div>
+    <div class="pt-cell pt-plate pt-name">
+      <div class="pt-value">
+        <div id="name-row">
+          <span id="sponsor" class="hidden"></span>
+          <span id="pname"></span>
+          <span id="pronouns" class="hidden"></span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>window.__SLOT = "player1"; window.__FIELD = "strip";</script>
+  <script src="/shared/panel-core.js"></script>
+  <script src="../theme.js"></script>
+</body>
+</html>

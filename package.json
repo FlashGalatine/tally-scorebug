@@ -1,0 +1,23 @@
+{
+  "name": "tally-scorebug",
+  "version": "0.1.0",
+  "description": "A Streamer.bot-native tournament scorebug for OBS — names, scores, and nationality flags driven from chat, Stream Deck, hotkeys, or a browser control panel. No dedicated server.",
+  "type": "module",
+  "license": "MIT",
+  "author": "Ashe \"Flash\" Galatine",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node mock-sb-server.mjs",
+    "roster": "node roster-helper.mjs",
+    "import": "node import-roster.mjs",
+    "verify": "node verify.mjs",
+    "verify:render": "node verify-render.mjs",
+    "shots": "node tools/shots.mjs"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  },
+  "comment": "verify:render and shots also need playwright-core (uses system Edge/Chrome): npm install --no-save playwright-core"
+}

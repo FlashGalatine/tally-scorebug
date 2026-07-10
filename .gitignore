@@ -1,0 +1,5 @@
+node_modules/
+config.json
+shared/roster.json
+test-render.png
+control-render.png

@@ -1,0 +1,338 @@
+/* ═══════════════════════════════════════════════════════════════════
+   Primetime theme — ESPN-style broadcast plates
+   Slight gradients, accented borders, 55° angular cells.
+   P1 cells: NW/SE interior 55° · P2 cells: NE/SW interior 55° (mirrored)
+   Title: trapezoid, NW/NE interior 55° (wide top, narrow bottom)
+   ═══════════════════════════════════════════════════════════════════ */
+
+@import url('https://fonts.googleapis.com/css2?family=Quantico:wght@400;700&display=swap');
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+:root {
+  --p1-red: #920635;
+  --p2-blue: #1251A0;
+  --purple: #A934A9;
+  --white: #FFFFFF;
+  --lt-gray: #C7CDD6;
+  --ink: #060608;
+  --text-shadow: 0 1px 2px rgba(0, 0, 0, 0.70), 0 2px 6px rgba(0, 0, 0, 0.40);
+}
+
+body {
+  overflow: hidden;
+  background: transparent;
+  font-family: 'Quantico', 'Segoe UI', system-ui, sans-serif;
+}
+
+body.offline .pt-root { opacity: 0.45; filter: grayscale(0.8); }
+
+.hidden { display: none !important; }
+
+/* ── Plate machinery (shared by strip cells and title) ────────────────
+   Two layers, both clip-path polygons (cyberpunk technique):
+   ::before — full polygon, accent-border gradient
+   ::after  — polygon inset ~2px following the slant, plate fill gradient
+              + a glossy sheen overlay (white top → dark bottom)        */
+
+.pt-plate { position: relative; }
+
+.pt-plate::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  clip-path: var(--clip-outer);
+  background: var(--accent);
+}
+
+.pt-plate::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  clip-path: var(--clip-inner);
+  background:
+    linear-gradient(180deg,
+      rgba(255, 255, 255, 0.10) 0%,
+      rgba(255, 255, 255, 0.02) 22%,
+      rgba(255, 255, 255, 0.00) 50%,
+      rgba(0, 0, 0, 0.22) 100%),
+    var(--fill);
+}
+
+/* ── Player strip (545×63): score | flag | name ──────────────────── */
+
+.pt-strip {
+  width: 545px;
+  height: 63px;
+  display: flex;
+}
+
+/* P2 mirrors the whole strip: name | flag | score, score at outer edge */
+.pt-strip.p2 { flex-direction: row-reverse; }
+
+/* Seamless seams: adjacent bounding boxes would leave a --slant-wide dead
+   triangle between cells, so each subsequent cell overlaps its neighbor by
+   exactly --slant. The slant edges then coincide and only the accent
+   borders draw the diagonal separator. Works with the flag cell hidden too
+   (score and name become flush instead). */
+.p1 .pt-cell + .pt-cell { margin-left: calc(-1 * var(--slant)); }
+.p2 .pt-cell + .pt-cell { margin-right: calc(-1 * var(--slant)); }
+
+.pt-cell {
+  height: 63px;
+  --slant: 44px; /* 63px / tan(55°) ≈ 44 — interior 55° corners */
+}
+
+.pt-score { flex: 0 0 100px; }
+.pt-flag  { flex: 0 0 112px; }
+.pt-name  { flex: 1 1 auto; min-width: 0; }
+
+.p1 .pt-cell {
+  --clip-outer: polygon(
+    0 0,
+    calc(100% - var(--slant)) 0,
+    100% 100%,
+    var(--slant) 100%);
+  --clip-inner: polygon(
+    2px 1.5px,
+    calc(100% - var(--slant) - 2px) 1.5px,
+    calc(100% - 2px) calc(100% - 1.5px),
+    calc(var(--slant) + 2px) calc(100% - 1.5px));
+}
+
+.p2 .pt-cell {
+  --clip-outer: polygon(
+    var(--slant) 0,
+    100% 0,
+    calc(100% - var(--slant)) 100%,
+    0 100%);
+  --clip-inner: polygon(
+    calc(var(--slant) + 2px) 1.5px,
+    calc(100% - 2px) 1.5px,
+    calc(100% - var(--slant) - 2px) calc(100% - 1.5px),
+    2px calc(100% - 1.5px));
+}
+
+/* Plate colors — P1 red/black, brightest at the outer (score) end */
+.p1 .pt-score {
+  --accent: linear-gradient(165deg, #FF7AA0 0%, #D42E66 32%, #6E0428 100%);
+  --fill: linear-gradient(170deg, #C11A55 0%, #920635 48%, #45021A 100%);
+}
+.p1 .pt-flag {
+  --accent: linear-gradient(165deg, #E45580 0%, #6E0428 100%);
+  --fill: var(--ink);
+}
+.p1 .pt-name {
+  --accent: linear-gradient(165deg, #E45580 0%, #8E1B45 38%, #3A0A1C 100%);
+  --fill: linear-gradient(90deg, #5C0423 0%, #270110 42%, #0B0509 78%, var(--ink) 100%);
+}
+
+/* Plate colors — P2 blue/black, brightest at the outer (score) end */
+.p2 .pt-score {
+  --accent: linear-gradient(195deg, #7FB7F2 0%, #2F6FC4 32%, #082A57 100%);
+  --fill: linear-gradient(190deg, #1E6BCB 0%, #1251A0 48%, #07254D 100%);
+}
+.p2 .pt-flag {
+  --accent: linear-gradient(195deg, #5E9BDE 0%, #082A57 100%);
+  --fill: var(--ink);
+}
+.p2 .pt-name {
+  --accent: linear-gradient(195deg, #5E9BDE 0%, #1C4E8E 38%, #081B36 100%);
+  --fill: linear-gradient(270deg, #0A3266 0%, #051426 42%, #07090D 78%, var(--ink) 100%);
+}
+
+/* ── Angle variant B (outward) ────────────────────────────────────────
+   Default (A) leans the strips inward (P1 NW/SE, P2 NE/SW). Variant B
+   mirrors each lean so the strips slant outward. Only the clip polygons
+   swap — the seam overlaps are unchanged: in a normal-flex row both lean
+   directions coincide with margin-left:-slant, and in the row-reverse P2
+   strip both coincide with margin-right:-slant. The flag image re-reads
+   --clip-inner automatically. Toggled by body.angle-b (theme.js). */
+
+body.angle-b .p1 .pt-cell {
+  --clip-outer: polygon(
+    var(--slant) 0,
+    100% 0,
+    calc(100% - var(--slant)) 100%,
+    0 100%);
+  --clip-inner: polygon(
+    calc(var(--slant) + 2px) 1.5px,
+    calc(100% - 2px) 1.5px,
+    calc(100% - var(--slant) - 2px) calc(100% - 1.5px),
+    2px calc(100% - 1.5px));
+}
+
+body.angle-b .p2 .pt-cell {
+  --clip-outer: polygon(
+    0 0,
+    calc(100% - var(--slant)) 0,
+    100% 100%,
+    var(--slant) 100%);
+  --clip-inner: polygon(
+    2px 1.5px,
+    calc(100% - var(--slant) - 2px) 1.5px,
+    calc(100% - 2px) calc(100% - 1.5px),
+    calc(var(--slant) + 2px) calc(100% - 1.5px));
+}
+
+/* Title flips to an inverted trapezoid (narrow top, wide bottom) */
+body.angle-b .pt-title {
+  --clip-outer: polygon(
+    var(--slant) 0,
+    calc(100% - var(--slant)) 0,
+    100% 100%,
+    0 100%);
+  --clip-inner: polygon(
+    calc(var(--slant) + 2px) 1.5px,
+    calc(100% - var(--slant) - 2px) 1.5px,
+    calc(100% - 2px) calc(100% - 1.5px),
+    2px calc(100% - 1.5px));
+}
+
+/* ── Cell content ────────────────────────────────────────────────── */
+
+.pt-value {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  overflow: hidden;
+  color: var(--white);
+  text-shadow: var(--text-shadow);
+}
+
+.pt-score .pt-value {
+  font-size: 28px;
+  font-weight: 700;
+  padding: 0 32px;
+}
+
+.pt-name .pt-value { padding: 0 36px; }
+
+/* Two-line mode needs a wider slant safe-area (taller content sits closer
+   to the slanted corners of the parallelogram) */
+.pt-name .pt-value.two-line { padding: 0 46px; }
+
+#name-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 24px;
+  white-space: nowrap;
+}
+
+/* Long names bleed onto a second line instead of shrinking to dust:
+   inline flow, so the whitespace between the spans becomes a break point */
+.two-line #name-row {
+  display: block;
+  width: 100%;
+  white-space: normal;
+  text-align: center;
+  line-height: 1.12;
+}
+
+#sponsor  { font-weight: 400; color: var(--lt-gray); }
+#pname    { font-weight: 700; }
+#pronouns { font-weight: 400; font-size: 0.58em; color: var(--lt-gray); }
+
+/* Full-bleed flag, clipped to the inner polygon so the accent border
+   stays visible around it */
+.pt-flag img {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  clip-path: var(--clip-inner);
+}
+
+/* ── Title (309×49 trapezoid) ────────────────────────────────────── */
+
+.pt-title {
+  width: 309px;
+  height: 49px;
+  --slant: 34px; /* 49px / tan(55°) ≈ 34 */
+  --clip-outer: polygon(
+    0 0,
+    100% 0,
+    calc(100% - var(--slant)) 100%,
+    var(--slant) 100%);
+  --clip-inner: polygon(
+    2px 1.5px,
+    calc(100% - 2px) 1.5px,
+    calc(100% - var(--slant) - 2px) calc(100% - 1.5px),
+    calc(var(--slant) + 2px) calc(100% - 1.5px));
+  --accent: linear-gradient(170deg, #E07BE0 0%, #A934A9 38%, #4A0E4A 100%);
+  --fill: linear-gradient(180deg, #932B93 0%, #5C155C 52%, #1C051D 100%);
+}
+
+.pt-title-stack {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 0 4px;
+}
+
+#header {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--white);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  line-height: 1.15;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  max-width: 255px;
+  padding: 0 6px;
+  text-shadow: var(--text-shadow);
+}
+
+#subheader {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--lt-gray);
+  letter-spacing: 0.03em;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  max-width: 205px;
+  padding: 0 6px;
+  text-shadow: var(--text-shadow);
+}
+
+/* Header alone (no subheader): hide the row, let the header grow */
+body.no-sub #subheader { display: none; }
+body.no-sub #header { font-size: 24px; }
+
+/* ── Animations ──────────────────────────────────────────────────── */
+
+.bump { animation: pt-bump 0.25s ease-out; }
+@keyframes pt-bump {
+  0%   { transform: scale(1); }
+  45%  { transform: scale(1.22); }
+  100% { transform: scale(1); }
+}
+
+/* Broadcast-style name swap on roster import (animate: true) */
+.swap-out {
+  opacity: 0;
+  transform: translateY(-6px);
+  transition: opacity 0.18s ease-in, transform 0.18s ease-in;
+}
+.swap-in { animation: pt-swap-in 0.26s ease-out; }
+@keyframes pt-swap-in {
+  0%   { opacity: 0; transform: translateY(8px); }
+  100% { opacity: 1; transform: none; }
+}
