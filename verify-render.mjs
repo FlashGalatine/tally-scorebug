@@ -21,8 +21,8 @@ const WS_PORT = Number(process.env.SB_WS_PORT) || 8082;
 const BASE = `http://127.0.0.1:${HTTP_PORT}`;
 // Panels are served over http://, so the ?sbport override reaches the shim (a file://
 // OBS source could not take this query param — see the README gotcha).
-const titleUrl = `${BASE}/themes/primetime/panels/title-309x49.html?sbport=${WS_PORT}`;
-const stripUrl = `${BASE}/themes/primetime/panels/player1-strip-545x63.html?sbport=${WS_PORT}`;
+const titleUrl = `${BASE}/tally-themes/primetime/panels/title-309x49.html?sbport=${WS_PORT}`;
+const stripUrl = `${BASE}/tally-themes/primetime/panels/player1-strip-545x63.html?sbport=${WS_PORT}`;
 
 let passed = 0, failed = 0;
 const check = (n, ok, d) => { ok ? passed++ : failed++; console.log(`  ${ok ? 'PASS' : 'FAIL'}  ${n}${!ok && d ? ' — ' + d : ''}`); };
@@ -51,7 +51,7 @@ async function launch() {
 async function main() {
   console.log('Scorebug — real-pixel render verification (Primetime)\n');
   let mock, browser;
-  const rosterPath = resolve(__dirname, 'shared', 'roster.json');
+  const rosterPath = resolve(__dirname, 'tally-shared', 'roster.json');
   try {
     mock = await startMock();
     console.log(`mock SB up (:${HTTP_PORT} HTTP, :${WS_PORT} WS)\n`);
@@ -108,7 +108,7 @@ async function main() {
       ],
     }));
     const ctrlPage = await browser.newPage({ viewport: { width: 420, height: 760 } });
-    await ctrlPage.goto(`${BASE}/shared/control.html?sbport=${WS_PORT}`, { waitUntil: 'load' });
+    await ctrlPage.goto(`${BASE}/tally-shared/control.html?sbport=${WS_PORT}`, { waitUntil: 'load' });
     const ctrlSynced = await ctrlPage.waitForFunction(
       () => document.getElementById('p1name').value === 'PG | Punk' && document.getElementById('p1score').textContent.trim() === '1',
       { timeout: 8000 }).then(() => true).catch(() => false);

@@ -3,8 +3,8 @@
 // the two SB surfaces the scoreboard depends on:
 //
 //   • HTTP Server on :7474 — SB Path->Folder file serving. Maps:
-//       /shared/*              -> shared/ (the SB shim panel-core.js + control panel)
-//       /themes/*              -> themes/ (the bundled theme(s), untouched)
+//       /tally-shared/*        -> tally-shared/ (the SB shim panel-core.js + control panel)
+//       /tally-themes/*        -> tally-themes/ (the bundled theme(s), untouched)
 //       /mock/cmd?command=..   -> applies a mutation + re-broadcasts (the Stream Deck
 //                                 analog: a button/chat hitting one control surface)
 //       /                      -> a panel index for quick manual testing
@@ -23,13 +23,13 @@ import { createServer } from 'node:http';
 import { readFile, readdir } from 'node:fs/promises';
 import { resolve, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import './shared/nations.js'; // side-effect: globalThis.Nations (same resolver the panel uses)
+import './tally-shared/nations.js'; // side-effect: globalThis.Nations (same resolver the panel uses)
 
 const { resolveFlag } = globalThis.Nations;
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const THEMES_DIR = resolve(__dirname, 'themes');
-const BUNDLE_SHARED = resolve(__dirname, 'shared'); // SB `shared` map → the shim + control.html
+const THEMES_DIR = resolve(__dirname, 'tally-themes');
+const BUNDLE_SHARED = resolve(__dirname, 'tally-shared'); // SB `tally-shared` map → the shim + control.html
 
 const HTTP_PORT = Number(process.env.SB_HTTP_PORT) || 7474; // SB HTTP Server default
 const WS_PORT = Number(process.env.SB_WS_PORT) || 8080; // SB WebSocket Server default
@@ -131,7 +131,7 @@ async function landingHtml() {
       let mani;
       try { mani = JSON.parse(await readFile(resolve(THEMES_DIR, t.name, 'manifest.json'), 'utf8')); } catch { continue; }
       const links = (mani.panels || []).map((p) => {
-        const href = `/themes/${t.name}/${p.file}?sbport=${WS_PORT}`;
+        const href = `/tally-themes/${t.name}/${p.file}?sbport=${WS_PORT}`;
         return `<li><a href="${href}" target="_blank">${p.label || p.file}</a> <span class="dim">${p.width}×${p.height}</span></li>`;
       }).join('');
       sections.push(`<section><h2>${mani.displayName || t.name}</h2><ul>${links}</ul></section>`);
@@ -171,16 +171,16 @@ const http = createServer(async (req, res) => {
     res.end(await landingHtml());
     return;
   }
-  // Two SB HTTP maps, identical to the real-SB config: `themes` → themes/ and
-  // `shared` → shared/ (the SB shim panel-core.js that every panel loads, plus
-  // control.html + nations.js). The panels load "/shared/panel-core.js" by absolute
-  // path, so which file is served there is the whole transport swap.
+  // Two SB HTTP maps, identical to the real-SB config: `tally-themes` → tally-themes/
+  // and `tally-shared` → tally-shared/ (the SB shim panel-core.js that every panel
+  // loads, plus control.html + nations.js). The panels load "/tally-shared/panel-core.js"
+  // by absolute path, so which file is served there is the whole transport swap.
   let file = null;
-  if (path.startsWith('/themes/')) file = safeResolve(THEMES_DIR, path.slice('/themes'.length));
-  else if (path.startsWith('/shared/')) file = safeResolve(BUNDLE_SHARED, path.slice('/shared'.length));
+  if (path.startsWith('/tally-themes/')) file = safeResolve(THEMES_DIR, path.slice('/tally-themes'.length));
+  else if (path.startsWith('/tally-shared/')) file = safeResolve(BUNDLE_SHARED, path.slice('/tally-shared'.length));
   if (!file) {
     res.writeHead(404, { 'content-type': 'text/plain' });
-    res.end('Map /themes/ (themes/) or /shared/ (this bundle: panel-core.js + control.html).');
+    res.end('Map /tally-themes/ (tally-themes/) or /tally-shared/ (this bundle: panel-core.js + control.html).');
     return;
   }
   return serveFile(res, file);

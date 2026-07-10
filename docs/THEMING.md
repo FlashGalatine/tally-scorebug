@@ -18,17 +18,17 @@ Both consume the exact same events. Pick per project — you can even mix them.
 ## How a panel works (the contract)
 
 Every panel is a static HTML file served by Streamer.bot's HTTP Server under
-`/themes/<your-theme>/…`. It does three things:
+`/tally-themes/<your-theme>/…`. It does three things:
 
 ```html
 <script>window.__SLOT = "player1"; window.__FIELD = "strip";</script>
-<script src="/shared/panel-core.js"></script>
+<script src="/tally-shared/panel-core.js"></script>
 <script src="../theme.js"></script>  <!-- or inline your JS -->
 ```
 
 1. **Declare what it renders** — `window.__SLOT` (`player1` / `player2` / `match`) and
    `window.__FIELD` (your choice of label) — *before* loading panel-core.
-2. **Load `/shared/panel-core.js`** by that **absolute path**. This is the transport: it
+2. **Load `/tally-shared/panel-core.js`** by that **absolute path**. This is the transport: it
    connects to Streamer.bot's WebSocket (`:8080`), subscribes, asks for the current state
    (so a panel added mid-match paints immediately), and re-dispatches every update as DOM
    events. Your code never touches the socket.
@@ -73,7 +73,7 @@ One HTML file per player strip. Two OBS sources total (plus a title if you want 
 Because panels are served over `http://`, a **query parameter can pick the slot**, so
 both players share one file.
 
-Save this as `themes/mytheme/strip.html` — it's complete and runnable as-is:
+Save this as `tally-themes/mytheme/strip.html` — it's complete and runnable as-is:
 
 ```html
 <!DOCTYPE html>
@@ -113,7 +113,7 @@ Save this as `themes/mytheme/strip.html` — it's complete and runnable as-is:
     window.__SLOT = who; window.__FIELD = 'strip';
     if (who === 'player2') document.getElementById('strip').classList.add('p2');
   </script>
-  <script src="/shared/panel-core.js"></script>
+  <script src="/tally-shared/panel-core.js"></script>
   <script>
     var FLAG_CDN = 'https://cdn.jsdelivr.net/gh/lipis/flag-icons@7.2.3/flags/4x3/';
 
@@ -125,7 +125,7 @@ Save this as `themes/mytheme/strip.html` — it's complete and runnable as-is:
       var cps = Array.from(s).map(function (c) { return c.codePointAt(0); });
       if (cps.length === 2 && cps.every(function (cp) { return cp >= 0x1F1E6 && cp <= 0x1F1FF; }))
         return FLAG_CDN + String.fromCharCode(cps[0] - 0x1F1E6 + 97, cps[1] - 0x1F1E6 + 97) + '.svg';
-      return null; // specialty flags: see themes/primetime/theme.js for inline-SVG handling
+      return null; // specialty flags: see tally-themes/primetime/theme.js for inline-SVG handling
     }
 
     function render(state) {
@@ -159,8 +159,8 @@ Save this as `themes/mytheme/strip.html` — it's complete and runnable as-is:
 Add two OBS Browser Sources, both 520×60:
 
 ```
-http://127.0.0.1:7474/themes/mytheme/strip.html
-http://127.0.0.1:7474/themes/mytheme/strip.html?player=2
+http://127.0.0.1:7474/tally-themes/mytheme/strip.html
+http://127.0.0.1:7474/tally-themes/mytheme/strip.html?player=2
 ```
 
 Restyle to taste — everything visual is the `<style>` block. The JS only ever sets text,
@@ -182,7 +182,7 @@ for the entire scorebug. Same contract; the render function just fills every ele
 </style>
 ...
 <script>window.__SLOT = 'match'; window.__FIELD = 'scene';</script>
-<script src="/shared/panel-core.js"></script>
+<script src="/tally-shared/panel-core.js"></script>
 <script>
   function render(s) {
     fillStrip(document.getElementById('p1'), s.player1, s);
@@ -206,7 +206,7 @@ One small panel per field — this is how the bundled Primetime's sibling themes
 (cyberpunk/sakura in StreamScoreboard) ship: separate name, score, and flag panels that
 you place independently in OBS. Maximum layout freedom, more sources to manage.
 
-A complete name-only component, `themes/mytheme/panels/p1-name.html`:
+A complete name-only component, `tally-themes/mytheme/panels/p1-name.html`:
 
 ```html
 <!DOCTYPE html>
@@ -223,7 +223,7 @@ A complete name-only component, `themes/mytheme/panels/p1-name.html`:
 <body>
   <div id="value"></div>
   <script>window.__SLOT = "player1"; window.__FIELD = "name";</script>
-  <script src="/shared/panel-core.js"></script>
+  <script src="/tally-shared/panel-core.js"></script>
   <script>
     function render(s) {
       var p = s[window.__SLOT]; if (!p) return;
@@ -250,7 +250,7 @@ Duplicate the set with `__SLOT = "player2"` for the other side (or use the
 
 For polish beyond this skeleton — auto-fit text that shrinks to the box, score-bump
 animation, name-swap transitions, specialty flags (🏴‍☠️ etc. have no ISO code and need
-inline SVGs) — read [`themes/primetime/theme.js`](../themes/primetime/theme.js); it's
+inline SVGs) — read [`tally-themes/primetime/theme.js`](../tally-themes/primetime/theme.js); it's
 ~290 commented lines implementing all of those against the same contract.
 
 ---
@@ -294,7 +294,7 @@ the difference; that's the point of the mock.
   (CEF caches aggressively).
 - Panels must be loaded over `http://` (as in the URLs above), not as local files —
   `file://` sources can't take `?player=`/`?sbport=` query params, and the absolute
-  `/shared/panel-core.js` include needs a server anyway.
+  `/tally-shared/panel-core.js` include needs a server anyway.
 - Webfonts via `@import`/`<link>` (Google Fonts) work fine; if the machine is offline
   they fall back to system fonts — design so that's acceptable. If your theme re-measures
   text (auto-fit), re-run the fit on `document.fonts.ready` like Primetime does.

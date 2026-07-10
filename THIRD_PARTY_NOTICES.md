@@ -5,7 +5,7 @@ third-party material:
 
 ## Vendored code (included in this repository)
 
-- **StreamScoreboard** components — the `themes/primetime/` theme and the
+- **StreamScoreboard** components — the `tally-themes/primetime/` theme and the
   `roster/` platform importers (Challonge, start.gg, TourneyBot, Matcherino, RoundOne,
   and `country-codes.js`) are vendored from the author's own StreamScoreboard project.
   MIT © Ashe "Flash" Galatine — same license and author as this repository.

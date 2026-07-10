@@ -19,7 +19,7 @@ flag. Made for FGC / esports streams that run fast matches and don't want to alt
 |---|---|
 | **Overlay** | the bundled **Primetime** theme — an ESPN-style title plate + one combined strip per player (score · flag · name), with auto-fit type and score-bump/name-swap animation |
 | **State** | eight Streamer.bot global variables (persist across restarts) |
-| **Control** | chat commands, Stream Deck, hotkeys, and `shared/control.html` |
+| **Control** | chat commands, Stream Deck, hotkeys, and `tally-shared/control.html` |
 | **Roster** | import a bracket (start.gg, Challonge, TourneyBot, Matcherino, RoundOne) → name autocomplete + flag autofill |
 | **Needs** | Streamer.bot (tested on 1.0.4) + a streaming app with a browser source (see below). Node.js 18+ only for the roster import and the local no-SB mock — the scorebug itself runs on Streamer.bot alone |
 
@@ -43,8 +43,13 @@ Where this README says "Browser Source", use your app's equivalent (XSplit: *Web
 
    | Path | Folder |
    |---|---|
-   | `themes` | `<repo>\themes` |
-   | `shared` | `<repo>\shared` |
+   | `tally-themes` | `<repo>\tally-themes` |
+   | `tally-shared` | `<repo>\tally-shared` |
+
+   (The `tally-` prefix keeps these paths from colliding with other Streamer.bot
+   add-ons that serve generic `themes`/`shared` folders. **Upgrading from an older
+   Tally that used `themes`/`shared`?** Update both mappings and re-point your
+   browser-source URLs below — the old `/themes/…` and `/shared/…` URLs will 404.)
 
 3. **Two actions** — Actions → new action named **exactly** `Scoreboard Push`; add a
    sub-action *Core → C# → Execute C# Code*; paste [`actions/scoreboard-push.cs`](actions/scoreboard-push.cs);
@@ -56,9 +61,9 @@ Where this README says "Browser Source", use your app's equivalent (XSplit: *Web
    (XSplit) per panel, at its native size:
 
    ```
-   http://127.0.0.1:7474/themes/primetime/panels/title-309x49.html            (309×49)
-   http://127.0.0.1:7474/themes/primetime/panels/player1-strip-545x63.html    (545×63)
-   http://127.0.0.1:7474/themes/primetime/panels/player2-strip-545x63.html    (545×63)
+   http://127.0.0.1:7474/tally-themes/primetime/panels/title-309x49.html            (309×49)
+   http://127.0.0.1:7474/tally-themes/primetime/panels/player1-strip-545x63.html    (545×63)
+   http://127.0.0.1:7474/tally-themes/primetime/panels/player2-strip-545x63.html    (545×63)
    ```
 
 5. **Drive it.** Create a chat command `!sb` (Commands tab), then — the step that's easy to
@@ -93,7 +98,7 @@ Everything runs through the one parametric `Scoreboard Command` action:
 `usa`, `america`, `holland`, …), a flag emoji pasted directly (covers 🏴‍☠️ and friends), or
 `none`/`clear` to remove. Values resolve to the flag emoji internally and the theme renders
 real SVG flags (flag-icons). Unknown nations are rejected with a warning in SB → Logs, so a
-typo can't blank the panel. The alias table lives in [`shared/nations.js`](shared/nations.js)
+typo can't blank the panel. The alias table lives in [`tally-shared/nations.js`](tally-shared/nations.js)
 with a mechanical copy in the C# — `npm run verify` diffs the two so they can't drift.
 
 **Chat styles.** Either one dispatch command (`!sb p1+` — a single trigger handles
@@ -110,7 +115,7 @@ each message parsed to.
 
 ![Control panel](docs/control-panel.png)
 
-Open **`http://127.0.0.1:7474/shared/control.html`** in any browser tab — or, in OBS,
+Open **`http://127.0.0.1:7474/tally-shared/control.html`** in any browser tab — or, in OBS,
 add it as a **Custom Browser Dock** (View → Docks → Custom Browser Docks). Name fields with roster
 autocomplete, flag fields with alias resolution + live preview, score buttons,
 titles, reset/swap. It drives the same `Scoreboard Command` over SB's WebSocket and

@@ -2,7 +2,7 @@
 // button. The panel can't scrape tournament sites itself (browser CORS) and neither
 // can Streamer.bot's C# out of the box, so this keeps the scrape in Node: the panel
 // calls GET /import?url=<tournament-url>, this fetches the bracket via roster-lib.mjs
-// (the platform scrapers under roster/), writes shared/roster.json, and returns
+// (the platform scrapers under roster/), writes tally-shared/roster.json, and returns
 // the roster in the response so the panel updates immediately.
 //
 // Run it while setting up a bracket (it's only needed at import time, not mid-match):
