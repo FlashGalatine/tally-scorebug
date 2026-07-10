@@ -1,9 +1,10 @@
 # Tally
 
-**A Streamer.bot-native tournament scorebug for OBS.** Player names, scores, and
-nationality flags on stream — driven from **Twitch chat**, a **Stream Deck**, **hotkeys**,
-or a small **browser control panel**. No dedicated server: Streamer.bot serves the
-overlays and holds the state.
+**A Streamer.bot-native tournament scorebug** for OBS, Streamlabs Desktop, XSplit — any
+streaming app with a browser source. Player names, scores, and nationality flags on
+stream — driven from **Twitch chat**, a **Stream Deck**, **hotkeys**, or a small
+**browser control panel**. No dedicated server: Streamer.bot serves the overlays and
+holds the state.
 
 ![Title](docs/primetime-title.png)
 
@@ -20,7 +21,14 @@ flag. Made for FGC / esports streams that run fast matches and don't want to alt
 | **State** | eight Streamer.bot global variables (persist across restarts) |
 | **Control** | chat commands, Stream Deck, hotkeys, and `shared/control.html` |
 | **Roster** | import a bracket (start.gg, Challonge, TourneyBot, Matcherino, RoundOne) → name autocomplete + flag autofill |
-| **Needs** | Streamer.bot (tested on 1.0.4) + OBS. Node.js 18+ only for the roster import and the local no-SB mock — the scorebug itself runs on Streamer.bot alone |
+| **Needs** | Streamer.bot (tested on 1.0.4) + a streaming app with a browser source (see below). Node.js 18+ only for the roster import and the local no-SB mock — the scorebug itself runs on Streamer.bot alone |
+
+**Works with any streaming software whose browser source is Chromium-based (≥ 80, i.e.
+anything from 2020 on):** the panels are plain web pages loaded from
+`http://127.0.0.1:7474` that open a WebSocket to Streamer.bot — nothing OBS-specific.
+OBS and Streamlabs Desktop use the same CEF browser source; current XSplit Broadcaster
+works too (old XSplit builds shipped an ancient engine — update if panels stay blank).
+Where this README says "Browser Source", use your app's equivalent (XSplit: *Webpage*).
 
 ## Quick start
 
@@ -40,7 +48,8 @@ flag. Made for FGC / esports streams that run fast matches and don't want to alt
    [`actions/scoreboard-command.cs`](actions/scoreboard-command.cs). Both compile with **no
    added references**. (The names matter: panels request `Scoreboard Push` on connect, and
    `Scoreboard Command` runs it by name.)
-4. **OBS** — add a Browser Source per panel, at its native size:
+4. **Your streaming app** — add a Browser Source (OBS/Streamlabs) or Webpage source
+   (XSplit) per panel, at its native size:
 
    ```
    http://127.0.0.1:7474/themes/primetime/panels/title-309x49.html            (309×49)
@@ -97,8 +106,8 @@ each message parsed to.
 
 ![Control panel](docs/control-panel.png)
 
-Open **`http://127.0.0.1:7474/shared/control.html`** — or add it as an **OBS Custom
-Browser Dock** (View → Docks → Custom Browser Docks). Name fields with roster
+Open **`http://127.0.0.1:7474/shared/control.html`** in any browser tab — or, in OBS,
+add it as a **Custom Browser Dock** (View → Docks → Custom Browser Docks). Name fields with roster
 autocomplete, flag fields with alias resolution + live preview, score buttons,
 titles, reset/swap. It drives the same `Scoreboard Command` over SB's WebSocket and
 live-reflects state, so it never fights chat or the deck.
@@ -167,6 +176,15 @@ reset, `x` swap) or `GET /mock/cmd?command=p1+`. `npm run verify:render` (needs
 - **Subscribe case gotcha (for integrators):** the shim subscribes with lowercase
   `events: { general: ['Custom'] }` even though delivered events carry `General.Custom` —
   capital `General` in the Subscribe silently receives nothing.
+
+## Author & support
+
+Built by **Ashe "Flash" Galatine**.
+
+- Email — [AsheJunius@gmail.com](mailto:AsheJunius@gmail.com)
+- X — [@AsheJunius](https://x.com/AsheJunius) · BlueSky — [@projectgalatine.com](https://bsky.app/profile/projectgalatine.com)
+- Twitch — [FlashGalatine](https://www.twitch.tv/FlashGalatine) · Discord — [Newbie Fight Club](https://discord.gg/NewbieFightClub)
+- Support — Patreon [ProjectGalatine](https://www.patreon.com/ProjectGalatine) · CashApp [$ProjectGalatine](https://cash.app/$ProjectGalatine)
 
 ## Credits & license
 
