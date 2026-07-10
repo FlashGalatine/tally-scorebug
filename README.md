@@ -33,7 +33,11 @@ Where this README says "Browser Source", use your app's equivalent (XSplit: *Web
 ## Quick start
 
 1. **WebSocket Server** — Streamer.bot → *Servers/Clients → WebSocket Server*: enable,
-   `127.0.0.1:8080`, authentication **off**.
+   `127.0.0.1:8080`, authentication **off**. (`8080` is only Tally's default, not a
+   requirement — if the port is taken, run SB's WS server anywhere and append
+   `?sbport=<port>` to every panel/control-panel URL, e.g. `…/title-309x49.html?sbport=9090`.
+   For a non-localhost host, set `window.__SB_WS_URL = 'ws://host:port/'` in a `<script>`
+   tag *before* the `panel-core.js` include instead. Auth off *is* a requirement.)
 2. **HTTP Server** — *Servers/Clients → HTTP Server*: enable, `127.0.0.1:7474`, add two
    Path → Folder mappings (folders from wherever you cloned this repo):
 
@@ -160,7 +164,8 @@ reset, `x` swap) or `GET /mock/cmd?command=p1+`. `npm run verify:render` (needs
   (the action shows Triggers: 0), or its text doesn't match what you type (`p1+` configured
   vs `!p1+` typed). SB → Logs shows `[Scoreboard Command] token='…'` for every hit.
 - **Panels blank** → state never arrived over the WS. Check the WS Server is on `:8080`
-  with auth off, and that the action is named exactly `Scoreboard Push` and **compiles**
+  with auth off (or that every panel URL carries a matching `?sbport=`, if you moved it),
+  and that the action is named exactly `Scoreboard Push` and **compiles**
   (`DoAction` returning ok only means the action *started* — a compile error broadcasts
   nothing). On error the actions broadcast `{ type:'scoreboard:error', message }`.
 - **`Uri`/`Process`/`Newtonsoft` "does not exist" when writing your own actions** → SB
@@ -173,6 +178,15 @@ reset, `x` swap) or `GET /mock/cmd?command=p1+`. `npm run verify:render` (needs
 - **`npm start` fails with `EADDRINUSE`/`EACCES`** → real Streamer.bot already owns
   `:7474`/`:8080`. You don't need the mock when SB is serving; or relocate it:
   `SB_HTTP_PORT=7480 SB_WS_PORT=8090 npm start`.
+- **SB says "Unable to start websocket server" on `:8080`, but Task Manager shows no
+  culprit** → a zombie socket. If SB previously exited uncleanly (crash/force-kill) while
+  the Roster Helper action's `node roster-helper.mjs` child was running, an older version
+  of that action let node inherit SB's listen sockets, keeping `:8080` bound under a PID
+  that no longer exists. Fix: kill the orphaned node (`taskkill /im node.exe /f`, or find
+  it via `Get-NetTCPConnection -LocalPort 8080`), restart SB's WS server, and re-paste the
+  current [`actions/streamerbot-roster-helper.cs`](actions/streamerbot-roster-helper.cs) —
+  it now launches node with `UseShellExecute = true`, which doesn't pass SB's handles to
+  the child, so this can't recur.
 - **Subscribe case gotcha (for integrators):** the shim subscribes with lowercase
   `events: { general: ['Custom'] }` even though delivered events carry `General.Custom` —
   capital `General` in the Subscribe silently receives nothing.

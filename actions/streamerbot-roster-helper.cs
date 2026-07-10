@@ -41,8 +41,13 @@ public class CPHInline
             psi.FileName = "node";
             psi.Arguments = "roster-helper.mjs";
             psi.WorkingDirectory = BUNDLE;
-            psi.UseShellExecute = false;
-            psi.CreateNoWindow = true;
+            // UseShellExecute = true is load-bearing: launching via the shell does NOT
+            // pass SB's open handles to the child. With UseShellExecute = false the node
+            // process inherits SB's listening sockets (WS :8080 / HTTP :7474), and if SB
+            // then exits uncleanly the orphaned helper keeps those ports bound — SB can't
+            // restart its WebSocket server until the helper is killed.
+            psi.UseShellExecute = true;
+            psi.WindowStyle = ProcessWindowStyle.Hidden;
             Process.Start(psi);
             CPH.LogInfo("[Roster Helper] started hidden: node roster-helper.mjs in " + BUNDLE + " (http://127.0.0.1:7481)");
             return true;
