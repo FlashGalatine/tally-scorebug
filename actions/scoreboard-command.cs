@@ -22,7 +22,7 @@
 // japan…), a flag emoji directly, or none/clear to remove. The value is resolved to a
 // flag EMOJI (the format every theme renders) and stored in sb.p1flag / sb.p2flag.
 // Unknown nations are rejected with a warning (typo protection). The alias table is a
-// mechanical copy of shared/nations.js — verify.mjs diffs the two, keep them in sync.
+// mechanical copy of tally-shared/nations.js — verify.mjs diffs the two, keep them in sync.
 //
 // Requires the companion "Scoreboard Push" action (it does the broadcast). Uses ONLY
 // SB's default C# reference set — no Newtonsoft, no System.Uri.
@@ -146,7 +146,7 @@ public class CPHInline
         return null;
     }
 
-    // MUST match normalize() in shared/nations.js exactly.
+    // MUST match normalize() in tally-shared/nations.js exactly.
     static string NormalizeNation(string s)
     {
         s = (s ?? "").ToLowerInvariant();
@@ -178,7 +178,7 @@ public class CPHInline
         return sb.ToString();
     }
 
-    // Mechanical copy of shared/nations.js MAP — keep the M["name"] = "iso"; format
+    // Mechanical copy of tally-shared/nations.js MAP — keep the M["name"] = "iso"; format
     // (verify.mjs parses these lines and diffs them against nations.js).
     static readonly Dictionary<string, string> NATIONS = BuildNations();
     static Dictionary<string, string> BuildNations()

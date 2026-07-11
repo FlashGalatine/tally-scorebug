@@ -3,7 +3,7 @@
 // Used by both import-roster.mjs (CLI) and roster-helper.mjs (the tiny local HTTP
 // service behind the control panel's Import button). It drives the platform scrapers
 // vendored under roster/ (Challonge, start.gg, TourneyBot, Matcherino, RoundOne —
-// from StreamScoreboard, same author, MIT) and produces shared/roster.json:
+// from StreamScoreboard, same author, MIT) and produces tally-shared/roster.json:
 //
 //   { tournament, platform, fetchedAt, count, flagged,
 //     names:   ["PG | Punk", ...],                  // legacy/simple consumers
@@ -23,7 +23,7 @@ import { fileURLToPath } from 'node:url';
 import { detectPlatform, listSupportedPlatforms } from './roster/platforms/index.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-export const ROSTER_PATH = resolve(__dirname, 'shared', 'roster.json');
+export const ROSTER_PATH = resolve(__dirname, 'tally-shared', 'roster.json');
 const CONFIG_PATH = resolve(__dirname, 'config.json');
 
 export { listSupportedPlatforms };

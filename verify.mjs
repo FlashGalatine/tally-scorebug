@@ -1,15 +1,15 @@
 // Automated end-to-end verification of the scoreboard's Streamer.bot seam — no
 // Streamer.bot required. It spawns the mock SB server, then:
 //
-//   1. Loads the REAL shared/panel-core.js (the SB shim) into a minimal browser shim
+//   1. Loads the REAL tally-shared/panel-core.js (the SB shim) into a minimal browser shim
 //      (real `ws` WebSocket) and asserts it re-emits `scoreboard:update` carrying the
 //      mock's state — proving Subscribe(lowercase general) + DoAction-on-connect + the
 //      General.Custom -> scoreboard:update unwrap into the theme-facing event.
 //   2. Drives /mock/cmd mutations (the Stream Deck / chat analog) and asserts each
 //      re-broadcast reflects the change (score incr, name set, swap, reset).
 //   3. Fetches the shim + real theme panels over the mock's HTTP server and asserts
-//      200 + that panels still load "/shared/panel-core.js" — proving SB-style
-//      Path->Folder serving with the themes byte-for-byte untouched.
+//      200 + that panels still load "/tally-shared/panel-core.js" — proving SB-style
+//      Path->Folder serving of the bundled themes.
 //
 // It does NOT render pixels; verify-render.mjs does that in a real browser.
 
@@ -20,7 +20,7 @@ import { fileURLToPath } from 'node:url';
 import { WebSocket } from 'ws';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-const SHIM_PATH = resolve(__dirname, 'shared', 'panel-core.js');
+const SHIM_PATH = resolve(__dirname, 'tally-shared', 'panel-core.js');
 const HTTP_PORT = Number(process.env.SB_HTTP_PORT) || 7475; // off the SB defaults so it coexists with a running SB
 const WS_PORT = Number(process.env.SB_WS_PORT) || 8081;
 const BASE = `http://127.0.0.1:${HTTP_PORT}`;
@@ -100,7 +100,7 @@ async function main() {
     console.log(`mock SB up (:${HTTP_PORT} HTTP, :${WS_PORT} WS)\n`);
 
     // ── 1. Transport: shim re-emits scoreboard:update from a DoAction sync ──────
-    console.log('[1] transport: shared/panel-core.js (SB shim) against the mock WS');
+    console.log('[1] transport: tally-shared/panel-core.js (SB shim) against the mock WS');
     const { next } = await runShim();
     const sync = await next();
     check('scoreboard:update dispatched on connect (DoAction sync)', !!sync);
@@ -145,7 +145,7 @@ async function main() {
     await fetch(`${BASE}/mock/cmd?command=swap`); await next(); // undo the swap for the tests below
 
     // Control-panel path: a DoAction carrying { command, value } args — exactly what
-    // shared/control.html sends to type names (and header/subheader) without chat.
+    // tally-shared/control.html sends to type names (and header/subheader) without chat.
     const ctrl = new WebSocket(`ws://127.0.0.1:${WS_PORT}/`);
     await new Promise((res, rej) => { ctrl.on('open', res); ctrl.on('error', rej); });
     ctrl.send(JSON.stringify({ request: 'Subscribe', id: 'c1', events: { general: ['Custom'] } }));
@@ -158,22 +158,22 @@ async function main() {
 
     // ── 3. HTTP: SB-style serving of the shim + untouched themes ───────────────
     console.log('\n[3] HTTP: SB-style Path->Folder serving');
-    const shimRes = await fetch(`${BASE}/shared/panel-core.js`);
+    const shimRes = await fetch(`${BASE}/tally-shared/panel-core.js`);
     const shimBody = await shimRes.text();
-    check('/shared/panel-core.js 200 javascript', shimRes.status === 200 && (shimRes.headers.get('content-type') || '').includes('javascript'));
+    check('/tally-shared/panel-core.js 200 javascript', shimRes.status === 200 && (shimRes.headers.get('content-type') || '').includes('javascript'));
     check('served shim subscribes with LOWERCASE general', shimBody.includes("general: ['Custom']"), 'the SB Subscribe case gotcha');
     check('served shim dispatches scoreboard:update', shimBody.includes('scoreboard:update'));
 
     for (const panel of [
-      '/themes/primetime/panels/title-309x49.html',
-      '/themes/primetime/panels/player1-strip-545x63.html',
-      '/themes/primetime/panels/player2-strip-545x63.html',
+      '/tally-themes/primetime/panels/title-309x49.html',
+      '/tally-themes/primetime/panels/player1-strip-545x63.html',
+      '/tally-themes/primetime/panels/player2-strip-545x63.html',
     ]) {
       const r = await fetch(`${BASE}${panel}`);
       const b = await r.text();
-      check(`panel 200 + loads /shared/panel-core.js: ${panel.split('/').slice(-2).join('/')}`, r.status === 200 && b.includes('/shared/panel-core.js'), 'status ' + r.status);
+      check(`panel 200 + loads /tally-shared/panel-core.js: ${panel.split('/').slice(-2).join('/')}`, r.status === 200 && b.includes('/tally-shared/panel-core.js'), 'status ' + r.status);
     }
-    const cssRes = await fetch(`${BASE}/themes/primetime/theme.css`);
+    const cssRes = await fetch(`${BASE}/tally-themes/primetime/theme.css`);
     await cssRes.arrayBuffer();
     check('theme.css 200 text/css', cssRes.status === 200 && (cssRes.headers.get('content-type') || '').includes('text/css'));
 
@@ -181,18 +181,18 @@ async function main() {
     const idxBody = await idxRes.text();
     check('panel index 200 lists themes', idxRes.status === 200 && /Primetime/i.test(idxBody));
 
-    const ctrlRes = await fetch(`${BASE}/shared/control.html`);
+    const ctrlRes = await fetch(`${BASE}/tally-shared/control.html`);
     const ctrlBody = await ctrlRes.text();
-    check('/shared/control.html 200 + wired to Scoreboard Command', ctrlRes.status === 200 && ctrlBody.includes('Scoreboard Command'));
+    check('/tally-shared/control.html 200 + wired to Scoreboard Command', ctrlRes.status === 200 && ctrlBody.includes('Scoreboard Command'));
     check('control.html loads nations.js + has flag inputs', ctrlBody.includes('nations.js') && ctrlBody.includes('p1flag'));
-    const natRes = await fetch(`${BASE}/shared/nations.js`);
-    check('/shared/nations.js 200 javascript', natRes.status === 200 && (natRes.headers.get('content-type') || '').includes('javascript'));
+    const natRes = await fetch(`${BASE}/tally-shared/nations.js`);
+    check('/tally-shared/nations.js 200 javascript', natRes.status === 200 && (natRes.headers.get('content-type') || '').includes('javascript'));
     await natRes.arrayBuffer();
 
-    // ── 4. Nation table parity: shared/nations.js ↔ scoreboard-command.cs ───────
+    // ── 4. Nation table parity: tally-shared/nations.js ↔ scoreboard-command.cs ─
     // The C# carries a mechanical copy of the JS map; diff them so they can't drift.
     console.log('\n[4] nations: JS ↔ C# alias-table parity');
-    await import('./shared/nations.js');
+    await import('./tally-shared/nations.js');
     const jsMap = globalThis.Nations.MAP;
     const csSrc = await readFile(resolve(__dirname, 'actions', 'scoreboard-command.cs'), 'utf8');
     const csMap = {};

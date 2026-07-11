@@ -61,7 +61,7 @@ async function shot(browser, url, w, h, out) {
 async function main() {
   await mkdir(DOCS, { recursive: true });
   let mock, browser;
-  const rosterPath = resolve(ROOT, 'shared', 'roster.json');
+  const rosterPath = resolve(ROOT, 'tally-shared', 'roster.json');
   try {
     mock = await startMock();
     browser = await launch();
@@ -89,10 +89,10 @@ async function main() {
     }));
 
     console.log('capturing…');
-    await shot(browser, `${BASE}/themes/primetime/panels/title-309x49.html?sbport=${WS_PORT}`, 309, 49, 'primetime-title.png');
-    await shot(browser, `${BASE}/themes/primetime/panels/player1-strip-545x63.html?sbport=${WS_PORT}`, 545, 63, 'primetime-strip-p1.png');
-    await shot(browser, `${BASE}/themes/primetime/panels/player2-strip-545x63.html?sbport=${WS_PORT}`, 545, 63, 'primetime-strip-p2.png');
-    await shot(browser, `${BASE}/shared/control.html?sbport=${WS_PORT}`, 420, 780, 'control-panel.png');
+    await shot(browser, `${BASE}/tally-themes/primetime/panels/title-309x49.html?sbport=${WS_PORT}`, 309, 49, 'primetime-title.png');
+    await shot(browser, `${BASE}/tally-themes/primetime/panels/player1-strip-545x63.html?sbport=${WS_PORT}`, 545, 63, 'primetime-strip-p1.png');
+    await shot(browser, `${BASE}/tally-themes/primetime/panels/player2-strip-545x63.html?sbport=${WS_PORT}`, 545, 63, 'primetime-strip-p2.png');
+    await shot(browser, `${BASE}/tally-shared/control.html?sbport=${WS_PORT}`, 420, 780, 'control-panel.png');
     console.log('done.');
   } finally {
     try { await rm(rosterPath); } catch {}

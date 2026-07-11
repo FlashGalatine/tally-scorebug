@@ -3,14 +3,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=545, height=63" />
-  <title>Primetime — P2 Strip 545×63 (name + flag + score)</title>
+  <title>Primetime — P1 Strip 545×63 (score + flag + name)</title>
   <link rel="stylesheet" href="../theme.css" />
   <style>
     body { width: 545px; height: 63px; }
   </style>
 </head>
 <body>
-  <div class="pt-strip pt-root p2">
+  <div class="pt-strip pt-root p1">
     <div class="pt-cell pt-plate pt-score"><div class="pt-value" id="score"></div></div>
     <div class="pt-cell pt-plate pt-flag hidden" id="flag-cell"><img id="flag" alt="" draggable="false" /></div>
     <div class="pt-cell pt-plate pt-name">
@@ -23,8 +23,8 @@
       </div>
     </div>
   </div>
-  <script>window.__SLOT = "player2"; window.__FIELD = "strip";</script>
-  <script src="/shared/panel-core.js"></script>
+  <script>window.__SLOT = "player1"; window.__FIELD = "strip";</script>
+  <script src="/tally-shared/panel-core.js"></script>
   <script src="../theme.js"></script>
 </body>
 </html>

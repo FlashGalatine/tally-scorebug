@@ -1,7 +1,7 @@
 // nations.js — nation-name/alias → flag-emoji resolver for the lite scoreboard.
 //
 // One canonical map, used by BOTH the browser control panel (<script src="nations.js">
-// → window.Nations) and the Node mock (`import './shared/nations.js'` → globalThis.Nations).
+// → window.Nations) and the Node mock (`import './tally-shared/nations.js'` → globalThis.Nations).
 // The Streamer.bot C# action (scoreboard-command.cs) carries a mechanical copy of the
 // same entries — verify.mjs diffs the two, so they cannot silently drift.
 //

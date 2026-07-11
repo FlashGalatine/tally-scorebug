@@ -65,7 +65,7 @@
   <div class="card">
     <h2>Roster</h2>
     <div class="row"><input type="text" id="rosterUrl" placeholder="Tournament URL (start.gg / Challonge / &hellip;)" autocomplete="off"><button class="set" id="importRoster">Import</button></div>
-    <div class="row"><span class="rosterinfo" id="rosterInfo">roster: &mdash;</span><button id="reloadRoster" class="mini" title="Re-read shared/roster.json">Reload</button></div>
+    <div class="row"><span class="rosterinfo" id="rosterInfo">roster: &mdash;</span><button id="reloadRoster" class="mini" title="Re-read tally-shared/roster.json">Reload</button></div>
   </div>
 
   <div class="card">
@@ -86,7 +86,7 @@
 // WebSocket directly (no library), sends DoAction requests with { command, value }
 // args, and live-reflects state so it stays in sync with chat / Stream Deck edits.
 //
-// Names autocomplete from shared/roster.json (written by import-roster.mjs or the
+// Names autocomplete from tally-shared/roster.json (written by import-roster.mjs or the
 // Import button → roster-helper.mjs) via a native <datalist>. Picking a roster player
 // who has a flag auto-fills the flag box (editable before Set — that's the override).
 // Setting a name also sends the flag box, so one Set applies both.
@@ -94,8 +94,8 @@
 // Flags accept an ISO code (jp), a nation name/alias (japan, uk, britain…), a flag
 // emoji, or none/clear — resolved by nations.js (same table the SB C# action carries).
 //
-// Serve it from SB's HTTP server via the same `shared` map as panel-core.js, then open
-// http://127.0.0.1:7474/shared/control.html . Config: window.__SB_WS_URL or ?sbport=<n>;
+// Serve it from SB's HTTP server via the same `tally-shared` map as panel-core.js, then open
+// http://127.0.0.1:7474/tally-shared/control.html . Config: window.__SB_WS_URL or ?sbport=<n>;
 // roster helper via window.__ROSTER_HELPER or ?rosterport=<n> (default :7481).
 (function () {
   'use strict';
