@@ -1,9 +1,10 @@
 // panel-core — the Streamer.bot transport every theme panel loads.
 //
-// Serve this file at /tally-shared/panel-core.js and any StreamScoreboard-style theme panel
-// works unchanged — panels load "/tally-shared/panel-core.js" by an absolute path and then
-// listen for the two window CustomEvents this dispatches (the same contract as
-// StreamScoreboard's stock panel-core, so themes port both ways):
+// Serve this file at /tally-shared/panel-core.js — panels load it by that absolute
+// path and then listen for the two window CustomEvents this dispatches (the same
+// contract as StreamScoreboard's stock panel-core, so themes port both ways with a
+// one-line edit: repoint each panel's script src from "/shared/panel-core.js" to
+// "/tally-shared/panel-core.js" or back):
 //
 //   scoreboard:sync   — full state    (detail = the state object)
 //   scoreboard:update — per-change     (detail = { player1, player2, header,

@@ -49,7 +49,9 @@ Where this README says "Browser Source", use your app's equivalent (XSplit: *Web
    (The `tally-` prefix keeps these paths from colliding with other Streamer.bot
    add-ons that serve generic `themes`/`shared` folders. **Upgrading from an older
    Tally that used `themes`/`shared`?** Update both mappings and re-point your
-   browser-source URLs below — the old `/themes/…` and `/shared/…` URLs will 404.)
+   browser-source URLs below — the old `/themes/…` and `/shared/…` URLs will 404.
+   Themes ported from StreamScoreboard need their panels' `panel-core.js` src
+   repointed too — see [docs/THEMING.md](docs/THEMING.md).)
 
 3. **Two actions** — Actions → new action named **exactly** `Scoreboard Push`; add a
    sub-action *Core → C# → Execute C# Code*; paste [`actions/scoreboard-push.cs`](actions/scoreboard-push.cs);

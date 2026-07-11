@@ -9,7 +9,7 @@
 //      re-broadcast reflects the change (score incr, name set, swap, reset).
 //   3. Fetches the shim + real theme panels over the mock's HTTP server and asserts
 //      200 + that panels still load "/tally-shared/panel-core.js" — proving SB-style
-//      Path->Folder serving with the themes byte-for-byte untouched.
+//      Path->Folder serving of the bundled themes.
 //
 // It does NOT render pixels; verify-render.mjs does that in a real browser.
 

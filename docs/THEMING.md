@@ -65,6 +65,13 @@ Conventions worth honoring:
 
 That's the whole integration. No library, no build step.
 
+**Porting a StreamScoreboard theme** takes one edit per panel: its stock panels load
+`<script src="/shared/panel-core.js">`, so repoint each to `/tally-shared/panel-core.js`
+and drop the theme into `tally-themes/`. (Or, if nothing else on your SB claims the
+`shared` path, add a third HTTP Server mapping `shared` → `<repo>\tally-shared` as a
+compatibility alias and the stock panels work unedited.) Everything else — the events,
+the state shape, `__SLOT`/`__FIELD` — is identical in both projects.
+
 ---
 
 ## Approach A — the single-file scorebug
