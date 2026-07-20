@@ -1,21 +1,28 @@
 // Streamer.bot "Scoreboard Command" action — the whole control surface in one
-// parametric action. It mutates the flat scoreboard state (eight global variables)
+// parametric action. It mutates the flat scoreboard state (SB global variables)
 // then runs "Scoreboard Push" to re-broadcast to every overlay: the score/name/
 // flag/title core an operator drives live.
 //
 // It accepts THREE calling styles, so one action covers chat, Stream Deck, and hotkeys:
 //   A) One chat command per action (RECOMMENDED). Create commands !p1+, !p1-, !p2+,
 //      !p2-, !reset, !swap, !p1name, !p2name, !p1flag, !p2flag, !p1score, !p2score,
-//      !header, !subheader and add each as a TRIGGER on this action. SB passes the
-//      matched command in the `command` argument and any trailing text in `rawInput`.
+//      !header, !subheader (plus the !p3*/!p4* set if you run 3–4 teams) and add each
+//      as a TRIGGER on this action. SB passes the matched command in the `command`
+//      argument and any trailing text in `rawInput`.
 //   B) One dispatch command. Create a single command (e.g. !sb) as the trigger and type
 //      "!sb p1+" / "!sb p1flag united kingdom". The token is the first input word.
 //   C) Stream Deck / hotkey. Add a *Set Argument* sub-action for `command` (and `value`
 //      for the set-* commands) before *Run Action* → this one.
 //
-// command ∈ p1+ | p1- | p2+ | p2- | p1score | p2score | reset | swap
-//          | p1name | p2name | p1flag | p2flag | header | subheader
+// command ∈ pN+ | pN- | pNscore | pNname | pNflag   (N = 1–4)
+//          | reset | swap | teams | header | subheader
 // value   = the name / number / title / nation text (set-* commands only)
+//
+// TEAMS: the scorebug is 2 slots by default. `teams 3` / `teams 4` (clamped 2–4)
+// enables the extra slots — "Scoreboard Push" then includes player3/player4 in every
+// broadcast and the control panel shows their cards. p3/p4 commands always store
+// their value (harmless while disabled); the extra slots simply aren't broadcast
+// until teams is raised. `teams 2` hides them again without erasing anything.
 //
 // FLAGS: p1flag/p2flag accept a nation in any of these forms — an ISO-3166 alpha-2
 // code (gb, jp), a country name or alias (uk, britain, great britain, united kingdom,
@@ -35,8 +42,12 @@ using System.Collections.Generic;
 public class CPHInline
 {
     static readonly string[] KNOWN = {
-        "p1+", "p1-", "p2+", "p2-", "p1score", "p2score",
-        "reset", "swap", "p1name", "p2name", "p1flag", "p2flag", "header", "subheader",
+        "p1+", "p1-", "p2+", "p2-", "p3+", "p3-", "p4+", "p4-",
+        "p1score", "p2score", "p3score", "p4score",
+        "reset", "swap", "teams",
+        "p1name", "p2name", "p3name", "p4name",
+        "p1flag", "p2flag", "p3flag", "p4flag",
+        "header", "subheader",
     };
 
     public bool Execute()
@@ -69,25 +80,34 @@ public class CPHInline
 
         CPH.LogInfo("[Scoreboard Command] token='" + token + "' value='" + value + "'");
 
-        switch (token)
+        // Player-slot commands share one shape: p<N><op>. Peel the slot index off
+        // once instead of enumerating 4 slots × 5 ops as switch cases.
+        if (token.Length >= 3 && token[0] == 'p' && token[1] >= '1' && token[1] <= '4')
         {
-            case "p1+": SetScore("sb.p1score", Score("sb.p1score") + 1); break;
-            case "p1-": SetScore("sb.p1score", Score("sb.p1score") - 1); break;
-            case "p2+": SetScore("sb.p2score", Score("sb.p2score") + 1); break;
-            case "p2-": SetScore("sb.p2score", Score("sb.p2score") - 1); break;
-            case "p1score": SetScore("sb.p1score", ParseInt(value, 0)); break;
-            case "p2score": SetScore("sb.p2score", ParseInt(value, 0)); break;
-            case "reset": SetScore("sb.p1score", 0); SetScore("sb.p2score", 0); break;
+            string n = token.Substring(1, 1);
+            string op = token.Substring(2);
+            switch (op)
+            {
+                case "+": SetScore("sb.p" + n + "score", Score("sb.p" + n + "score") + 1); break;
+                case "-": SetScore("sb.p" + n + "score", Score("sb.p" + n + "score") - 1); break;
+                case "score": SetScore("sb.p" + n + "score", ParseInt(value, 0)); break;
+                case "name": CPH.SetGlobalVar("sb.p" + n + "name", value, true); break;
+                case "flag": if (!SetFlag("sb.p" + n + "flag", value)) return false; break;
+                default: return Unknown(token);
+            }
+        }
+        else switch (token)
+        {
+            case "reset":
+                for (int i = 1; i <= 4; i++) SetScore("sb.p" + i + "score", 0);
+                break;
             case "swap": Swap(); break;
-            case "p1name": CPH.SetGlobalVar("sb.p1name", value, true); break;
-            case "p2name": CPH.SetGlobalVar("sb.p2name", value, true); break;
-            case "p1flag": if (!SetFlag("sb.p1flag", value)) return false; break;
-            case "p2flag": if (!SetFlag("sb.p2flag", value)) return false; break;
+            case "teams":
+                CPH.SetGlobalVar("sb.teams", Clamp(ParseInt(value, 2), 2, 4).ToString(CultureInfo.InvariantCulture), true);
+                break;
             case "header": CPH.SetGlobalVar("sb.header", value, true); break;
             case "subheader": CPH.SetGlobalVar("sb.subheader", value, true); break;
-            default:
-                CPH.LogWarn("[Scoreboard Command] unknown command: '" + token + "' (expected one of p1+/p1-/p2+/p2-/p1score/p2score/reset/swap/p1name/p2name/p1flag/p2flag/header/subheader)");
-                return false;
+            default: return Unknown(token);
         }
 
         // Re-scan + re-broadcast to all overlays. Same action the overlay's
@@ -96,6 +116,13 @@ public class CPHInline
         return true;
     }
 
+    bool Unknown(string token)
+    {
+        CPH.LogWarn("[Scoreboard Command] unknown command: '" + token + "' (expected pN+/pN-/pNscore/pNname/pNflag for N=1-4, or reset/swap/teams/header/subheader)");
+        return false;
+    }
+
+    // Swaps slots 1↔2 only — with 3-4 teams, re-set names directly instead.
     void Swap()
     {
         string n1 = Var("sb.p1name", "Player 1"), n2 = Var("sb.p2name", "Player 2");

@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Scorebug — Control</title>
 <style>
-  :root { --bg:#15161a; --card:#1e2027; --line:#2c2f3a; --text:#e8e8ea; --sub:#9aa0ad; --accent:#8b5cf6; --p1:#3b82f6; --p2:#e0405f; }
+  :root { --bg:#15161a; --card:#1e2027; --line:#2c2f3a; --text:#e8e8ea; --sub:#9aa0ad; --accent:#8b5cf6; --p1:#3b82f6; --p2:#e0405f; --p3:#22c55e; --p4:#eab308; }
   * { box-sizing:border-box; }
   body { margin:0; font:14px/1.4 system-ui,"Segoe UI",sans-serif; background:var(--bg); color:var(--text); padding:16px; }
   .wrap { max-width:380px; margin:0 auto; }
@@ -30,6 +30,10 @@
   .bump { width:40px; font-size:16px; font-weight:700; }
   .tag { font-weight:700; font-size:12px; width:26px; }
   .p1 .tag { color:var(--p1); } .p2 .tag { color:var(--p2); }
+  .p3 .tag { color:var(--p3); } .p4 .tag { color:var(--p4); }
+  .card.hide { display:none; }
+  .teams button { flex:1; }
+  .teams button.on { background:var(--accent); border-color:var(--accent); color:#fff; font-weight:600; }
   .flagprev { width:28px; text-align:center; font-size:18px; flex:none; }
   .actions { display:flex; gap:8px; }
   .actions button { flex:1; }
@@ -54,6 +58,29 @@
     <div class="row"><input type="text" id="p2name" placeholder="Player 2 name" autocomplete="off" list="roster"><button class="set" data-set="p2name" data-src="p2name">Set</button></div>
     <div class="row"><input type="text" id="p2flag" placeholder="Flag &mdash; jp, japan, or emoji" autocomplete="off"><span class="flagprev" id="p2flagprev">&mdash;</span><button class="set" data-set="p2flag" data-src="p2flag">Set</button></div>
     <div class="row score"><span class="tag">P2</span><button class="bump" data-cmd="p2-">&minus;</button><span class="val" id="p2score">0</span><button class="bump" data-cmd="p2+">+</button></div>
+  </div>
+
+  <div class="card p3 hide" id="card-p3">
+    <h2>Player 3</h2>
+    <div class="row"><input type="text" id="p3name" placeholder="Player 3 name" autocomplete="off" list="roster"><button class="set" data-set="p3name" data-src="p3name">Set</button></div>
+    <div class="row"><input type="text" id="p3flag" placeholder="Flag &mdash; jp, japan, or emoji" autocomplete="off"><span class="flagprev" id="p3flagprev">&mdash;</span><button class="set" data-set="p3flag" data-src="p3flag">Set</button></div>
+    <div class="row score"><span class="tag">P3</span><button class="bump" data-cmd="p3-">&minus;</button><span class="val" id="p3score">0</span><button class="bump" data-cmd="p3+">+</button></div>
+  </div>
+
+  <div class="card p4 hide" id="card-p4">
+    <h2>Player 4</h2>
+    <div class="row"><input type="text" id="p4name" placeholder="Player 4 name" autocomplete="off" list="roster"><button class="set" data-set="p4name" data-src="p4name">Set</button></div>
+    <div class="row"><input type="text" id="p4flag" placeholder="Flag &mdash; jp, japan, or emoji" autocomplete="off"><span class="flagprev" id="p4flagprev">&mdash;</span><button class="set" data-set="p4flag" data-src="p4flag">Set</button></div>
+    <div class="row score"><span class="tag">P4</span><button class="bump" data-cmd="p4-">&minus;</button><span class="val" id="p4score">0</span><button class="bump" data-cmd="p4+">+</button></div>
+  </div>
+
+  <div class="card">
+    <h2>Teams</h2>
+    <div class="row teams">
+      <button data-teams="2" class="on">2</button>
+      <button data-teams="3">3</button>
+      <button data-teams="4">4</button>
+    </div>
   </div>
 
   <div class="card">
@@ -129,18 +156,21 @@
   }
   function onState(d) {
     if (!d) return;
-    if (d.player1) {
-      $('p1score').textContent = d.player1.score;
-      reflect('p1name', d.player1.name);
-      reflect('p1flag', d.player1.fields && d.player1.fields.flag);
-      updatePreview('p1');
+    for (var i = 1; i <= 4; i++) {
+      var p = d['player' + i];
+      if (!p) continue;
+      $('p' + i + 'score').textContent = p.score;
+      reflect('p' + i + 'name', p.name);
+      reflect('p' + i + 'flag', p.fields && p.fields.flag);
+      updatePreview('p' + i);
     }
-    if (d.player2) {
-      $('p2score').textContent = d.player2.score;
-      reflect('p2name', d.player2.name);
-      reflect('p2flag', d.player2.fields && d.player2.fields.flag);
-      updatePreview('p2');
-    }
+    // Teams mode: player3/player4 cards appear only when the broadcast carries
+    // them (`teams` is absent on a plain two-team payload).
+    var teams = d.teams || 2;
+    $('card-p3').classList.toggle('hide', teams < 3);
+    $('card-p4').classList.toggle('hide', teams < 4);
+    var btns = document.querySelectorAll('button[data-teams]');
+    for (var b = 0; b < btns.length; b++) btns[b].classList.toggle('on', Number(btns[b].dataset.teams) === teams);
     reflect('header', d.header); reflect('subheader', d.subheader);
   }
 
@@ -189,9 +219,10 @@
       if (flag) { $(which + 'flag').value = flag; updatePreview(which); }
     });
   }
-  wireAutofill('p1'); wireAutofill('p2');
-  $('p1flag').addEventListener('input', function () { updatePreview('p1'); });
-  $('p2flag').addEventListener('input', function () { updatePreview('p2'); });
+  ['p1', 'p2', 'p3', 'p4'].forEach(function (which) {
+    wireAutofill(which);
+    $(which + 'flag').addEventListener('input', function () { updatePreview(which); });
+  });
 
   // ── Streamer.bot connection ──────────────────────────────────────────────────
   function connect() {
@@ -222,13 +253,13 @@
   // action logs its own warning and changes nothing.
   function doSet(setCmd, srcId) {
     var v = $(srcId).value;
-    if (setCmd === 'p1flag' || setCmd === 'p2flag') {
+    if (/^p[1-4]flag$/.test(setCmd)) {
       var f = window.Nations.resolveFlag(v);
       send(setCmd, f === null ? v : f);
       return;
     }
     send(setCmd, v);
-    if (setCmd === 'p1name' || setCmd === 'p2name') {
+    if (/^p[1-4]name$/.test(setCmd)) {
       var which = setCmd.slice(0, 2);
       var fv = window.Nations.resolveFlag($(which + 'flag').value);
       send(which + 'flag', fv === null ? $(which + 'flag').value : fv);
@@ -238,6 +269,7 @@
     var b = e.target.closest('button'); if (!b) return;
     if (b.id === 'reloadRoster') { loadRoster(); return; }
     if (b.id === 'importRoster') { importRoster(); return; }
+    if (b.dataset.teams) { send('teams', b.dataset.teams); return; }
     if (b.dataset.cmd) send(b.dataset.cmd);
     else if (b.dataset.set) doSet(b.dataset.set, b.dataset.src);
   });

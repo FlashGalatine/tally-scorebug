@@ -8,7 +8,8 @@
 //
 //   scoreboard:sync   — full state    (detail = the state object)
 //   scoreboard:update — per-change     (detail = { player1, player2, header,
-//                        subheader, fields, fieldsEnabled, animate, fullPayload })
+//                        subheader, fields, fieldsEnabled, animate, fullPayload,
+//                        and — only in 3-4 team mode — player3, player4, teams })
 //
 // The transport is Streamer.bot-native: instead of a dedicated scoreboard server's
 // ws://<host>/overlay, this speaks Streamer.bot's
@@ -64,6 +65,11 @@
         detail: {
           player1: d.player1,
           player2: d.player2,
+          // 3-4 team mode (`!sb teams 3|4`): extra slots + the count. All three are
+          // undefined on a plain two-team broadcast, matching the original shape.
+          player3: d.player3,
+          player4: d.player4,
+          teams: d.teams,
           header: d.header,
           subheader: d.subheader,
           fields: d.fields ?? {},

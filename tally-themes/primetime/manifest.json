@@ -10,7 +10,9 @@
   "panels": [
     { "file": "panels/title-309x49.html",          "label": "Title (trapezoid)",              "width": 309, "height": 49, "slot": "match",   "field": "title", "tags": ["trapezoid"] },
     { "file": "panels/player1-strip-545x63.html",  "label": "P1 Strip (score + flag + name)", "width": 545, "height": 63, "slot": "player1", "field": "strip", "tags": ["strip", "parallelogram"] },
-    { "file": "panels/player2-strip-545x63.html",  "label": "P2 Strip (score + flag + name)", "width": 545, "height": 63, "slot": "player2", "field": "strip", "tags": ["strip", "parallelogram"] }
+    { "file": "panels/player2-strip-545x63.html",  "label": "P2 Strip (score + flag + name)", "width": 545, "height": 63, "slot": "player2", "field": "strip", "tags": ["strip", "parallelogram"] },
+    { "file": "panels/player3-strip-545x63.html",  "label": "P3 Strip (3-4 team mode)",       "width": 545, "height": 63, "slot": "player3", "field": "strip", "tags": ["strip", "parallelogram", "teams"] },
+    { "file": "panels/player4-strip-545x63.html",  "label": "P4 Strip (4 team mode)",         "width": 545, "height": 63, "slot": "player4", "field": "strip", "tags": ["strip", "parallelogram", "teams"] }
   ],
   "fields": [
     { "key": "angle", "type": "text", "slot": "match", "label": "Outward angle (B)", "placeholder": "toggle the checkbox to flip the 55° lean — value unused", "defaultEnabled": false }

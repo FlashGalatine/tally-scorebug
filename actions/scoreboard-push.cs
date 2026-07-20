@@ -11,10 +11,11 @@
 //      click COMPILE — it must report success. A compile error means the action runs
 //      but broadcasts nothing, which shows up as a blank/stale overlay.
 //
-// State lives in eight persisted global variables (all set by "Scoreboard Command"):
-//   sb.p1name, sb.p2name   (string)   sb.p1score, sb.p2score (int as string, 0-99)
-//   sb.p1flag, sb.p2flag   (flag emoji, "" = none)
-//   sb.header, sb.subheader (string)
+// State lives in persisted global variables (all set by "Scoreboard Command"):
+//   sb.pNname (string), sb.pNscore (int as string, 0-99), sb.pNflag (flag emoji,
+//   "" = none) for N = 1-4; sb.header, sb.subheader (string); and sb.teams (2-4,
+//   default 2). player3/player4 appear in the payload only when sb.teams >= 3/4 —
+//   two-team setups broadcast the exact same shape as before the teams feature.
 //
 // NOTE: uses ONLY types in Streamer.bot's default C# reference set — JSON is
 // hand-written (no Newtonsoft) and there is no System.Uri. Verified pattern from the
@@ -31,37 +32,50 @@ public class CPHInline
     {
         try
         {
-            string p1 = Var("sb.p1name", "Player 1");
-            string p2 = Var("sb.p2name", "Player 2");
-            int s1 = Clamp(IntVar("sb.p1score", 0), 0, 99);
-            int s2 = Clamp(IntVar("sb.p2score", 0), 0, 99);
-            string f1 = Var("sb.p1flag", "");
-            string f2 = Var("sb.p2flag", "");
+            int teams = Clamp(IntVar("sb.teams", 2), 2, 4);
             string header = Var("sb.header", "");
             string subheader = Var("sb.subheader", "");
+
+            var names = new string[teams];
+            var scores = new int[teams];
+            var flags = new string[teams];
+            bool anyFlag = false;
+            for (int i = 0; i < teams; i++)
+            {
+                string n = (i + 1).ToString(CultureInfo.InvariantCulture);
+                names[i] = Var("sb.p" + n + "name", "Player " + n);
+                scores[i] = Clamp(IntVar("sb.p" + n + "score", 0), 0, 99);
+                flags[i] = Var("sb.p" + n + "flag", "");
+                if (flags[i].Length > 0) anyFlag = true;
+            }
 
             // Build the exact `scoreboard:update` payload the themes consume. The lite
             // build carries ONE add-in field — the flag (emoji) — surfaced exactly like
             // the full app does it: per-player `fields.flag` plus a shared
-            // `fieldsEnabled["player.flag"]` toggle (on when either player has one).
+            // `fieldsEnabled["player.flag"]` toggle (on when any player has one).
             // Other add-ins (pronouns/logo/color) stay absent, so those panels render
-            // nothing; the core name/score/title panels are unaffected.
+            // nothing; the core name/score/title panels are unaffected. `teams` plus
+            // playerN keys past player2 appear only when sb.teams > 2, so two-team
+            // consumers see the original shape untouched.
             var sb = new StringBuilder();
             sb.Append("{\"type\":\"scoreboard:update\",");
-            sb.Append("\"player1\":{\"name\":").Append(JsonStr(p1))
-              .Append(",\"score\":").Append(s1.ToString(CultureInfo.InvariantCulture))
-              .Append(",\"fields\":").Append(FieldsJson(f1)).Append("},");
-            sb.Append("\"player2\":{\"name\":").Append(JsonStr(p2))
-              .Append(",\"score\":").Append(s2.ToString(CultureInfo.InvariantCulture))
-              .Append(",\"fields\":").Append(FieldsJson(f2)).Append("},");
+            if (teams > 2) sb.Append("\"teams\":").Append(teams.ToString(CultureInfo.InvariantCulture)).Append(',');
+            for (int i = 0; i < teams; i++)
+            {
+                sb.Append("\"player").Append((i + 1).ToString(CultureInfo.InvariantCulture))
+                  .Append("\":{\"name\":").Append(JsonStr(names[i]))
+                  .Append(",\"score\":").Append(scores[i].ToString(CultureInfo.InvariantCulture))
+                  .Append(",\"fields\":").Append(FieldsJson(flags[i])).Append("},");
+            }
             sb.Append("\"header\":").Append(JsonStr(header)).Append(',');
             sb.Append("\"subheader\":").Append(JsonStr(subheader)).Append(',');
             sb.Append("\"fields\":{},\"fieldsEnabled\":");
-            sb.Append(f1.Length > 0 || f2.Length > 0 ? "{\"player.flag\":true}" : "{}");
+            sb.Append(anyFlag ? "{\"player.flag\":true}" : "{}");
             sb.Append('}');
 
             string json = sb.ToString();
-            CPH.LogInfo("[Scoreboard Push] " + p1 + " " + s1 + " - " + s2 + " " + p2 + " (" + json.Length + " bytes)");
+            CPH.LogInfo("[Scoreboard Push] " + names[0] + " " + scores[0] + " - " + scores[1] + " " + names[1]
+                + (teams > 2 ? " (+" + (teams - 2) + " more)" : "") + " (" + json.Length + " bytes)");
             CPH.WebsocketBroadcastJson(json);
             return true;
         }

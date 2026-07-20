@@ -144,6 +144,29 @@ async function main() {
     check('both cleared → fieldsEnabled empty', !(fc?.fieldsEnabled || {})['player.flag']);
     await fetch(`${BASE}/mock/cmd?command=swap`); await next(); // undo the swap for the tests below
 
+    // ── 2c. Teams mode: optional 3rd/4th slots via the `teams` command ──────────
+    console.log('\n[2c] teams: 3-4 team mode payload shape');
+    await fetch(`${BASE}/mock/cmd?command=teams&value=4`);
+    const t4 = await next();
+    check('teams 4 → payload carries teams:4 + player3/player4', t4?.teams === 4 && t4?.player3?.name === 'Player 3' && t4?.player4?.name === 'Player 4', JSON.stringify({ teams: t4?.teams }));
+    await fetch(`${BASE}/mock/cmd?command=p3%2B`);
+    check('p3+ → player3 score 1', (await next())?.player3?.score === 1);
+    await fetch(`${BASE}/mock/cmd?command=p4name&value=${encodeURIComponent('DFM | Squad D')}`);
+    check('p4name → player4 name set', (await next())?.player4?.name === 'DFM | Squad D');
+    await fetch(`${BASE}/mock/cmd?command=p3flag&value=brazil`);
+    const t3f = await next();
+    check('p3flag brazil → 🇧🇷 + player.flag enabled', t3f?.player3?.fields?.flag === '\u{1F1E7}\u{1F1F7}' && t3f?.fieldsEnabled?.['player.flag'] === true);
+    await fetch(`${BASE}/mock/cmd?command=reset`);
+    const t4r = await next();
+    check('reset clears all four scores', [1, 2, 3, 4].every((i) => t4r?.['player' + i]?.score === 0));
+    await fetch(`${BASE}/mock/cmd?command=teams&value=3`);
+    const t3 = await next();
+    check('teams 3 → player3 kept, player4 dropped', t3?.teams === 3 && !!t3?.player3 && t3?.player4 === undefined);
+    await fetch(`${BASE}/mock/cmd?command=p3flag&value=none`); await next();
+    await fetch(`${BASE}/mock/cmd?command=teams&value=2`);
+    const t2 = await next();
+    check('teams 2 → original two-team shape (no teams/player3 keys)', t2?.teams === undefined && t2?.player3 === undefined && !!t2?.player1);
+
     // Control-panel path: a DoAction carrying { command, value } args — exactly what
     // tally-shared/control.html sends to type names (and header/subheader) without chat.
     const ctrl = new WebSocket(`ws://127.0.0.1:${WS_PORT}/`);
@@ -168,6 +191,8 @@ async function main() {
       '/tally-themes/primetime/panels/title-309x49.html',
       '/tally-themes/primetime/panels/player1-strip-545x63.html',
       '/tally-themes/primetime/panels/player2-strip-545x63.html',
+      '/tally-themes/primetime/panels/player3-strip-545x63.html',
+      '/tally-themes/primetime/panels/player4-strip-545x63.html',
     ]) {
       const r = await fetch(`${BASE}${panel}`);
       const b = await r.text();
@@ -185,6 +210,7 @@ async function main() {
     const ctrlBody = await ctrlRes.text();
     check('/tally-shared/control.html 200 + wired to Scoreboard Command', ctrlRes.status === 200 && ctrlBody.includes('Scoreboard Command'));
     check('control.html loads nations.js + has flag inputs', ctrlBody.includes('nations.js') && ctrlBody.includes('p1flag'));
+    check('control.html has teams selector + P3/P4 cards', ctrlBody.includes('data-teams') && ctrlBody.includes('card-p3') && ctrlBody.includes('card-p4'));
     const natRes = await fetch(`${BASE}/tally-shared/nations.js`);
     check('/tally-shared/nations.js 200 javascript', natRes.status === 200 && (natRes.headers.get('content-type') || '').includes('javascript'));
     await natRes.arrayBuffer();

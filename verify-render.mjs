@@ -160,6 +160,32 @@ async function main() {
     }))).catch(() => ({ count: 0, has: false, bound: false }));
     check('roster.json → <datalist> autocomplete (name inputs bound)', rosterOK.count >= 4 && rosterOK.has && rosterOK.bound, JSON.stringify(rosterOK));
 
+    // ── Teams mode: P3 strip hides at 2 teams, paints at 3+, control cards follow ─
+    const p3Page = await browser.newPage({ viewport: { width: 545, height: 63 }, deviceScaleFactor: 2 });
+    await p3Page.goto(`${BASE}/tally-themes/primetime/panels/player3-strip-545x63.html?sbport=${WS_PORT}`, { waitUntil: 'load' });
+    const p3Hidden = await p3Page.waitForFunction(
+      () => document.querySelector('.pt-root') && document.querySelector('.pt-root').classList.contains('hidden'),
+      { timeout: 8000 }).then(() => true).catch(() => false);
+    check('P3 strip hidden in two-team mode', p3Hidden);
+    await fetch(`${BASE}/mock/cmd?command=teams&value=3`);
+    await fetch(`${BASE}/mock/cmd?command=p3name&value=${encodeURIComponent('Third Wheel')}`);
+    const p3Shown = await p3Page.waitForFunction(
+      () => !document.querySelector('.pt-root').classList.contains('hidden')
+        && document.getElementById('pname').textContent.trim() === 'Third Wheel',
+      { timeout: 6000 }).then(() => true).catch(() => false);
+    check('teams 3 → P3 strip appears + renders the name', p3Shown,
+      await p3Page.evaluate(() => document.getElementById('pname').textContent));
+    const p3Card = await ctrlPage.waitForFunction(
+      () => !document.getElementById('card-p3').classList.contains('hide')
+        && document.getElementById('card-p4').classList.contains('hide'),
+      { timeout: 6000 }).then(() => true).catch(() => false);
+    check('control panel shows the P3 card (and not P4) at teams 3', p3Card);
+    await fetch(`${BASE}/mock/cmd?command=teams&value=2`);
+    const p3Rehidden = await p3Page.waitForFunction(
+      () => document.querySelector('.pt-root').classList.contains('hidden'), { timeout: 6000 }).then(() => true).catch(() => false);
+    check('teams 2 → P3 strip hides again', p3Rehidden);
+    await p3Page.close();
+
     await stripPage.screenshot({ path: resolve(__dirname, 'test-render.png') });
     await ctrlPage.screenshot({ path: resolve(__dirname, 'control-render.png') });
     console.log('  screenshots → test-render.png, control-render.png');

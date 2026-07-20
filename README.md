@@ -18,7 +18,8 @@ flag. Made for FGC / esports streams that run fast matches and don't want to alt
 | | |
 |---|---|
 | **Overlay** | the bundled **Primetime** theme — an ESPN-style title plate + one combined strip per player (score · flag · name), with auto-fit type and score-bump/name-swap animation |
-| **State** | eight Streamer.bot global variables (persist across restarts) |
+| **Teams** | 2 by default, up to **4** (`!sb teams 4` — see below); or use a single strip as a plain on-stream **counter** (deaths, attempts, …) |
+| **State** | a handful of Streamer.bot global variables (persist across restarts) |
 | **Control** | chat commands, Stream Deck, hotkeys, and `tally-shared/control.html` |
 | **Roster** | import a bracket (start.gg, Challonge, TourneyBot, Matcherino, RoundOne) → name autocomplete + flag autofill |
 | **Needs** | Streamer.bot (tested on 1.0.4) + a streaming app with a browser source (see below). Node.js 18+ only for the roster import and the local no-SB mock — the scorebug itself runs on Streamer.bot alone |
@@ -89,11 +90,54 @@ Everything runs through the one parametric `Scoreboard Command` action:
 |---|---|---|
 | `p1+` `p1-` `p2+` `p2-` | — | score ±1 (clamped 0–99) |
 | `p1score` `p2score` | number | set a score directly |
-| `reset` | — | both scores → 0 |
-| `swap` | — | swap the two players (name + score + flag) |
+| `reset` | — | all scores → 0 |
+| `swap` | — | swap players 1 and 2 (name + score + flag) |
 | `p1name` `p2name` | text | set a name — `Sponsor \| Player` renders as a sponsor plate |
 | `p1flag` `p2flag` | nation | set the nationality flag (see below) |
 | `header` `subheader` | text | match title / subtitle |
+| `teams` | 2–4 | enable/disable the optional 3rd and 4th slots (see below) |
+
+Every `p1`/`p2` command also exists as `p3`/`p4` (`p3+`, `p4name`, `p3flag`, …) — they
+drive the extra slots of teams mode.
+
+### Three or four teams (optional)
+
+The scorebug is two slots out of the box. For 3- and 4-way formats (crew battles,
+free-for-alls, team leagues), send `teams 3` or `teams 4` (chat: `!sb teams 4`; the
+control panel has a **Teams** selector). From then on every broadcast includes
+`player3`/`player4`, the control panel grows a **Player 3** / **Player 4** card, and the
+`p3*`/`p4*` commands (and their dedicated-command variants `!p3+`, `!p4name`, … — add
+them as triggers like the others) drive them. Add the extra Primetime strips as sources:
+
+```
+http://127.0.0.1:7474/tally-themes/primetime/panels/player3-strip-545x63.html   (545×63, green)
+http://127.0.0.1:7474/tally-themes/primetime/panels/player4-strip-545x63.html   (545×63, gold)
+```
+
+The P3/P4 strips render blank until teams mode reaches them, so you can leave the
+sources in your scene permanently. `teams 2` returns to the classic scorebug without
+erasing the extra slots' names/scores (they come back on the next `teams 3`/`4`), and
+two-team broadcasts keep the exact original payload shape, so custom themes that only
+know `player1`/`player2` are unaffected. `swap` always swaps slots 1↔2 — with more
+teams, re-set names directly.
+
+### Not just scores — use it as a counter
+
+Nothing says a slot has to be a player. A strip is just a **name + a number driven from
+chat, a Stream Deck, or a hotkey**, which makes it a ready-made on-stream tally for
+anything you'd otherwise count on a sticky note:
+
+- **Souls-like death counter** — `!sb p1name Deaths`, hide the P2 strip (or run a
+  one-slot layout), and bind `p1+` to a Stream Deck key. `!sb p1score 57` corrects it.
+- **Attempt counter** — "Attempts at this jump": `p1+` per try, `reset` on a new
+  obstacle, `header`/`subheader` as the challenge title.
+- **Running gags** — times the streamer noticed the same background NPC, rage quits,
+  "that's the third time today" oddities. With `teams 3`/`4` you can track several
+  counters at once (Deaths / Rage quits / Chat was right).
+
+Tips for counter use: scores clamp at 0–99; leave the flag unset and the flag cell
+collapses; mod-only counting works by restricting the chat command's permission in
+Streamer.bot (or skipping chat triggers entirely and using the deck/control panel).
 
 **Flags & nation aliases.** A nation can be an ISO-3166 code (`jp`, `gb`, `fr`), one of
 ~260 country names/aliases (`japan`, `uk`, `britain`, `great britain`, `united kingdom`,
@@ -120,7 +164,8 @@ each message parsed to.
 Open **`http://127.0.0.1:7474/tally-shared/control.html`** in any browser tab — or, in OBS,
 add it as a **Custom Browser Dock** (View → Docks → Custom Browser Docks). Name fields with roster
 autocomplete, flag fields with alias resolution + live preview, score buttons,
-titles, reset/swap. It drives the same `Scoreboard Command` over SB's WebSocket and
+titles, reset/swap, and a **Teams** selector (the Player 3/4 cards appear when you
+pick 3 or 4). It drives the same `Scoreboard Command` over SB's WebSocket and
 live-reflects state, so it never fights chat or the deck.
 
 **Roster import (names + flags).** Paste a tournament URL in the Roster card and click

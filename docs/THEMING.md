@@ -26,7 +26,7 @@ Every panel is a static HTML file served by Streamer.bot's HTTP Server under
 <script src="../theme.js"></script>  <!-- or inline your JS -->
 ```
 
-1. **Declare what it renders** — `window.__SLOT` (`player1` / `player2` / `match`) and
+1. **Declare what it renders** — `window.__SLOT` (`player1` … `player4` / `match`) and
    `window.__FIELD` (your choice of label) — *before* loading panel-core.
 2. **Load `/tally-shared/panel-core.js`** by that **absolute path**. This is the transport: it
    connects to Streamer.bot's WebSocket (`:8080`), subscribes, asks for the current state
@@ -55,7 +55,13 @@ Both carry the same state shape in `detail`:
 Conventions worth honoring:
 
 - **`fieldsEnabled["player.flag"]`** — render flags only when this is `true` *and* the
-  player's `fields.flag` is non-empty. (It's `true` whenever either player has a flag.)
+  player's `fields.flag` is non-empty. (It's `true` whenever any player has a flag.)
+- **3–4 team mode** — when the operator runs `teams 3` or `teams 4`, the payload gains
+  a `"teams": 3|4` key plus `"player3"` (and `"player4"`) objects in the same shape.
+  All three are **absent** in the default two-team mode, so a theme that only knows
+  `player1`/`player2` keeps working unchanged. A `player3`/`player4` panel should hide
+  itself when its slot is missing from the payload (Primetime's theme.js toggles
+  `.hidden` on the strip root — teams was lowered back, don't show stale state).
 - **`Sponsor | Player` names** — a `|` in the name is a sponsor prefix; split it if your
   design has a sponsor treatment, or render the string as-is if not.
 - **`body.offline`** — panel-core toggles the `offline` class on `<body>` when the

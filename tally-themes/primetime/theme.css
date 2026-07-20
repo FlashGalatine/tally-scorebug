@@ -143,6 +143,35 @@ body.offline .pt-root { opacity: 0.45; filter: grayscale(0.8); }
   --fill: linear-gradient(270deg, #0A3266 0%, #051426 42%, #07090D 78%, var(--ink) 100%);
 }
 
+/* Plate colors — P3 green/black (3-4 team mode; P1 geometry via class p1,
+   these later rules win the color custom-property tie) */
+.p3 .pt-score {
+  --accent: linear-gradient(165deg, #7EE2A8 0%, #2FA05E 32%, #05391C 100%);
+  --fill: linear-gradient(170deg, #1E9E52 0%, #0E6B38 48%, #04301A 100%);
+}
+.p3 .pt-flag {
+  --accent: linear-gradient(165deg, #55C687 0%, #05391C 100%);
+  --fill: var(--ink);
+}
+.p3 .pt-name {
+  --accent: linear-gradient(165deg, #55C687 0%, #1B7A45 38%, #072D18 100%);
+  --fill: linear-gradient(90deg, #064622 0%, #022410 42%, #060B08 78%, var(--ink) 100%);
+}
+
+/* Plate colors — P4 gold/black (4 team mode; mirrored P2 geometry via class p2) */
+.p4 .pt-score {
+  --accent: linear-gradient(195deg, #F5D57E 0%, #C79A2F 32%, #4E3705 100%);
+  --fill: linear-gradient(190deg, #C7941E 0%, #96700E 48%, #453204 100%);
+}
+.p4 .pt-flag {
+  --accent: linear-gradient(195deg, #DEBB5E 0%, #4E3705 100%);
+  --fill: var(--ink);
+}
+.p4 .pt-name {
+  --accent: linear-gradient(195deg, #DEBB5E 0%, #8E6D1B 38%, #362807 100%);
+  --fill: linear-gradient(270deg, #665006 0%, #262002 42%, #0D0B06 78%, var(--ink) 100%);
+}
+
 /* ── Angle variant B (outward) ────────────────────────────────────────
    Default (A) leans the strips inward (P1 NW/SE, P2 NE/SW). Variant B
    mirrors each lean so the strips slant outward. Only the clip polygons

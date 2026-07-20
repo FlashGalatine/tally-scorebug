@@ -97,6 +97,10 @@
   // ── Player strip ───────────────────────────────────────────────────
   function renderStrip(state) {
     const p = state[slot];
+    // player3/player4 are absent from the payload when teams mode doesn't reach
+    // them — hide the whole strip (and un-hide when teams is raised again).
+    const root = document.querySelector('.pt-root');
+    if (root) root.classList.toggle('hidden', !p);
     if (!p) return;
     renderScore(p);
     renderFlag(state, p);

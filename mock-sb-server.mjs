@@ -43,37 +43,42 @@ const MIME = {
   '.svg': 'image/svg+xml', '.woff': 'font/woff', '.woff2': 'font/woff2', '.ttf': 'font/ttf',
 };
 
-// Flat lite state — the exact eight values the C# "Scoreboard Push" reads from globals.
+// Flat lite state — the exact values the C# "Scoreboard Push" reads from globals.
+// Slots 3-4 exist but only broadcast when teams > 2 (the optional 3-4 team mode).
 const state = {
-  p1name: 'Player 1', p2name: 'Player 2',
-  p1score: 0, p2score: 0,
-  p1flag: '', p2flag: '',
+  p1name: 'Player 1', p2name: 'Player 2', p3name: 'Player 3', p4name: 'Player 4',
+  p1score: 0, p2score: 0, p3score: 0, p4score: 0,
+  p1flag: '', p2flag: '', p3flag: '', p4flag: '',
+  teams: 2,
   header: 'Streamer.bot Lite', subheader: 'FT2',
 };
 
-// Mirror of the C# "Scoreboard Command" switch — the single control surface.
+// Mirror of the C# "Scoreboard Command" dispatch — the single control surface.
 function applyCommand(command, value) {
   const cmd = String(command || '').trim().toLowerCase();
   const val = value == null ? '' : String(value);
-  const clamp = (n) => Math.max(0, Math.min(99, Math.trunc(n) || 0));
+  const clamp = (n, lo = 0, hi = 99) => Math.max(lo, Math.min(hi, Math.trunc(n) || 0));
+  const pn = /^p([1-4])(\+|-|score|name|flag)$/.exec(cmd);
+  if (pn) {
+    const [, n, op] = pn;
+    switch (op) {
+      case '+': state['p' + n + 'score'] = clamp(state['p' + n + 'score'] + 1); break;
+      case '-': state['p' + n + 'score'] = clamp(state['p' + n + 'score'] - 1); break;
+      case 'score': state['p' + n + 'score'] = clamp(parseInt(val, 10)); break;
+      case 'name': state['p' + n + 'name'] = val; break;
+      case 'flag': { const f = resolveFlag(val); if (f == null) return false; state['p' + n + 'flag'] = f; break; }
+    }
+    return true;
+  }
   switch (cmd) {
-    case 'p1+': state.p1score = clamp(state.p1score + 1); break;
-    case 'p1-': state.p1score = clamp(state.p1score - 1); break;
-    case 'p2+': state.p2score = clamp(state.p2score + 1); break;
-    case 'p2-': state.p2score = clamp(state.p2score - 1); break;
-    case 'p1score': state.p1score = clamp(parseInt(val, 10)); break;
-    case 'p2score': state.p2score = clamp(parseInt(val, 10)); break;
-    case 'reset': state.p1score = 0; state.p2score = 0; break;
-    case 'swap': {
+    case 'reset': for (let i = 1; i <= 4; i++) state['p' + i + 'score'] = 0; break;
+    case 'swap': { // slots 1↔2 only, matching the C#
       const n = state.p1name; state.p1name = state.p2name; state.p2name = n;
       const s = state.p1score; state.p1score = state.p2score; state.p2score = s;
       const f = state.p1flag; state.p1flag = state.p2flag; state.p2flag = f;
       break;
     }
-    case 'p1name': state.p1name = val; break;
-    case 'p2name': state.p2name = val; break;
-    case 'p1flag': { const f = resolveFlag(val); if (f == null) return false; state.p1flag = f; break; }
-    case 'p2flag': { const f = resolveFlag(val); if (f == null) return false; state.p2flag = f; break; }
+    case 'teams': state.teams = clamp(parseInt(val, 10) || 2, 2, 4); break;
     case 'header': state.header = val; break;
     case 'subheader': state.subheader = val; break;
     default: return false;
@@ -94,15 +99,19 @@ function customEvent(data) {
 // carries one add-in field — the flag — mirroring scoreboard-push.cs: per-player
 // fields.flag plus fieldsEnabled['player.flag'] (on when either player has one).
 function stateMessage() {
-  return customEvent({
-    type: 'scoreboard:update',
-    player1: { name: state.p1name, score: state.p1score, fields: state.p1flag ? { flag: state.p1flag } : {} },
-    player2: { name: state.p2name, score: state.p2score, fields: state.p2flag ? { flag: state.p2flag } : {} },
-    header: state.header,
-    subheader: state.subheader,
-    fields: {},
-    fieldsEnabled: (state.p1flag || state.p2flag) ? { 'player.flag': true } : {},
-  });
+  const msg = { type: 'scoreboard:update' };
+  if (state.teams > 2) msg.teams = state.teams; // absent in two-team mode (original shape)
+  let anyFlag = false;
+  for (let i = 1; i <= state.teams; i++) {
+    const flag = state['p' + i + 'flag'];
+    if (flag) anyFlag = true;
+    msg['player' + i] = { name: state['p' + i + 'name'], score: state['p' + i + 'score'], fields: flag ? { flag } : {} };
+  }
+  msg.header = state.header;
+  msg.subheader = state.subheader;
+  msg.fields = {};
+  msg.fieldsEnabled = anyFlag ? { 'player.flag': true } : {};
+  return customEvent(msg);
 }
 
 // Resolve a request path to a file inside `base`, guarding against traversal.
