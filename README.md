@@ -33,6 +33,15 @@ Where this README says "Browser Source", use your app's equivalent (XSplit: *Web
 
 ## Quick start
 
+First, get the code onto the machine that runs Streamer.bot — either
+
+```
+git clone https://github.com/FlashGalatine/tally-scorebug.git
+```
+
+or click **<> Code → Download ZIP** on the repo page and extract it. The
+`<repo>` paths below refer to that folder.
+
 1. **WebSocket Server** — Streamer.bot → *Servers/Clients → WebSocket Server*: enable,
    `127.0.0.1:8080`, authentication **off**. (`8080` is only Tally's default, not a
    requirement — if the port is taken, run SB's WS server anywhere and append
