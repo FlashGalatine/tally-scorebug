@@ -54,7 +54,9 @@ const state = {
 };
 
 // Mirror of the C# "Scoreboard Command" dispatch — the single control surface.
-function applyCommand(command, value) {
+// `flag` is the optional companion arg that rides along with a pNname command, so the
+// control panel applies name + flag in ONE DoAction (SB 1.0.4 arg-bleeds bursts).
+function applyCommand(command, value, flag) {
   const cmd = String(command || '').trim().toLowerCase();
   const val = value == null ? '' : String(value);
   const clamp = (n, lo = 0, hi = 99) => Math.max(lo, Math.min(hi, Math.trunc(n) || 0));
@@ -65,7 +67,12 @@ function applyCommand(command, value) {
       case '+': state['p' + n + 'score'] = clamp(state['p' + n + 'score'] + 1); break;
       case '-': state['p' + n + 'score'] = clamp(state['p' + n + 'score'] - 1); break;
       case 'score': state['p' + n + 'score'] = clamp(parseInt(val, 10)); break;
-      case 'name': state['p' + n + 'name'] = val; break;
+      case 'name': {
+        state['p' + n + 'name'] = val;
+        // A bad flag only warns in the C# — the name still applies.
+        if (flag != null) { const f = resolveFlag(String(flag)); if (f != null) state['p' + n + 'flag'] = f; }
+        break;
+      }
       case 'flag': { const f = resolveFlag(val); if (f == null) return false; state['p' + n + 'flag'] = f; break; }
     }
     return true;
@@ -169,7 +176,7 @@ const http = createServer(async (req, res) => {
   const query = new URLSearchParams(url.split('?')[1] || '');
 
   if (path === '/mock/cmd') {
-    const ok = applyCommand(query.get('command'), query.get('value'));
+    const ok = applyCommand(query.get('command'), query.get('value'), query.get('flag'));
     if (ok) broadcast();
     res.writeHead(ok ? 200 : 400, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ ok, state }));
@@ -222,7 +229,7 @@ wss.on('connection', (ws) => {
     } else if (m.request === 'DoAction') {
       ws.send(JSON.stringify({ id: m.id, status: 'ok' }));
       const name = m.action && m.action.name;
-      if (name === 'Scoreboard Command' && m.args && applyCommand(m.args.command, m.args.value)) {
+      if (name === 'Scoreboard Command' && m.args && applyCommand(m.args.command, m.args.value, m.args.flag)) {
         broadcast(); // mutate + notify all overlays (mimics Scoreboard Command → Scoreboard Push)
       } else if (ws.subscribedCustom) {
         ws.send(stateMessage()); // Scoreboard Push / sync-on-connect re-broadcast

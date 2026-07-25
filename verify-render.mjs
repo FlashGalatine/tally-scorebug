@@ -108,6 +108,14 @@ async function main() {
       ],
     }));
     const ctrlPage = await browser.newPage({ viewport: { width: 420, height: 760 } });
+    // Tap outbound WebSocket frames before the page's own script runs. The count is
+    // the load-bearing assertion below: SB 1.0.4 arg-bleeds two DoActions to the same
+    // action within a few ms, so a Set click must produce exactly ONE.
+    await ctrlPage.addInitScript(() => {
+      window.__sent = [];
+      const send = WebSocket.prototype.send;
+      WebSocket.prototype.send = function (data) { try { window.__sent.push(String(data)); } catch {} return send.call(this, data); };
+    });
     await ctrlPage.goto(`${BASE}/tally-shared/control.html?sbport=${WS_PORT}`, { waitUntil: 'load' });
     const ctrlSynced = await ctrlPage.waitForFunction(
       () => document.getElementById('p1name').value === 'PG | Punk' && document.getElementById('p1score').textContent.trim() === '1',
@@ -128,7 +136,20 @@ async function main() {
     check('roster pick auto-fills the flag box (+ preview)', autofill,
       await ctrlPage.evaluate(() => document.getElementById('p1flag').value + ' / ' + document.getElementById('p1flagprev').textContent));
 
+    await ctrlPage.evaluate(() => { window.__sent.length = 0; });
     await ctrlPage.click('button[data-set="p1name"]');
+    // The regression guard for the bug where Set on a name did nothing: the click must
+    // emit ONE DoAction carrying both `value` (name) and `flag`. Two DoActions here
+    // arg-bleed on real SB — both landed as p1flag, the name never applied, and the
+    // next broadcast reflected the old name back into the box.
+    const sentForSet = await ctrlPage.evaluate(() => window.__sent.map((s) => { try { return JSON.parse(s); } catch { return null; } }).filter(Boolean));
+    const doActions = sentForSet.filter((m) => m.request === 'DoAction');
+    check('name Set emits exactly ONE DoAction (SB burst arg-bleed guard)', doActions.length === 1,
+      doActions.length + ': ' + JSON.stringify(doActions.map((m) => m.args)));
+    check('that DoAction carries the name in `value` and the flag alongside it',
+      doActions[0]?.args?.command === 'p1name' && doActions[0]?.args?.value === 'Vamp Fatale' && doActions[0]?.args?.flag === JP,
+      JSON.stringify(doActions[0]?.args));
+
     // One Set applies name + flag: the strip shows the name AND maps the emoji to
     // the flag-icons jp.svg in its flag cell.
     const nameEcho = await stripPage.waitForFunction(

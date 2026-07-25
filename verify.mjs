@@ -177,6 +177,23 @@ async function main() {
     check('control-panel DoAction(Scoreboard Command) sets a name', (await next())?.player1?.name === 'The Tyrant');
     ctrl.send(JSON.stringify({ request: 'DoAction', id: 'c3', action: { name: 'Scoreboard Command' }, args: { command: 'header', value: 'Capcom Cup' } }));
     check('control-panel DoAction sets the header', (await next())?.header === 'Capcom Cup');
+
+    // Name + flag ride ONE DoAction (the `flag` companion arg). Two back-to-back
+    // DoActions to the same action arg-bleed on SB 1.0.4 — both ran as p1flag and the
+    // name silently never applied, so the panel's box snapped back to the old name.
+    ctrl.send(JSON.stringify({ request: 'DoAction', id: 'c4', action: { name: 'Scoreboard Command' }, args: { command: 'p1name', value: 'Vamp Fatale', flag: 'japan' } }));
+    const both = await next();
+    check('one DoAction sets name AND flag together (no burst needed)',
+      both?.player1?.name === 'Vamp Fatale' && both?.player1?.fields?.flag === JP,
+      JSON.stringify(both?.player1));
+    // A typo'd nation must not cost you the name — the C# warns and keeps going.
+    ctrl.send(JSON.stringify({ request: 'DoAction', id: 'c5', action: { name: 'Scoreboard Command' }, args: { command: 'p1name', value: 'Blanka-chan', flag: 'florpland' } }));
+    const badFlag = await next();
+    check('bad companion flag warns but the name still applies',
+      badFlag?.player1?.name === 'Blanka-chan' && badFlag?.player1?.fields?.flag === JP,
+      JSON.stringify(badFlag?.player1));
+    ctrl.send(JSON.stringify({ request: 'DoAction', id: 'c6', action: { name: 'Scoreboard Command' }, args: { command: 'p1name', value: 'Player 1', flag: 'none' } }));
+    await next();
     ctrl.close();
 
     // ── 3. HTTP: SB-style serving of the shim + untouched themes ───────────────
@@ -211,6 +228,11 @@ async function main() {
     check('/tally-shared/control.html 200 + wired to Scoreboard Command', ctrlRes.status === 200 && ctrlBody.includes('Scoreboard Command'));
     check('control.html loads nations.js + has flag inputs', ctrlBody.includes('nations.js') && ctrlBody.includes('p1flag'));
     check('control.html has teams selector + P3/P4 cards', ctrlBody.includes('data-teams') && ctrlBody.includes('card-p3') && ctrlBody.includes('card-p4'));
+    // Both halves of the one-DoAction name+flag fix must exist, or a Set silently
+    // half-applies: the panel sends the companion arg, the C# has to read it.
+    const cmdSrc = await readFile(resolve(__dirname, 'actions', 'scoreboard-command.cs'), 'utf8');
+    check('control.html sends the flag as a companion arg (not a 2nd DoAction)', /send\(setCmd,\s*v,\s*\{\s*flag:/.test(ctrlBody));
+    check('scoreboard-command.cs reads the companion `flag` arg', /Arg\("flag"/.test(cmdSrc));
     const natRes = await fetch(`${BASE}/tally-shared/nations.js`);
     check('/tally-shared/nations.js 200 javascript', natRes.status === 200 && (natRes.headers.get('content-type') || '').includes('javascript'));
     await natRes.arrayBuffer();

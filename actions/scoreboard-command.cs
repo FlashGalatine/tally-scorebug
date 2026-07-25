@@ -17,6 +17,10 @@
 // command ∈ pN+ | pN- | pNscore | pNname | pNflag   (N = 1–4)
 //          | reset | swap | teams | header | subheader
 // value   = the name / number / title / nation text (set-* commands only)
+// flag    = OPTIONAL, only alongside `command=pNname`: that player's nation, applied
+//           in the same invocation. The control panel uses it so one Set click sends
+//           one DoAction — two DoActions to this action within a few ms arg-bleed on
+//           SB 1.0.4 and the name silently never lands. Chat never sends it.
 //
 // TEAMS: the scorebug is 2 slots by default. `teams 3` / `teams 4` (clamped 2–4)
 // enables the extra slots — "Scoreboard Push" then includes player3/player4 in every
@@ -78,7 +82,9 @@ public class CPHInline
             }
         }
 
-        CPH.LogInfo("[Scoreboard Command] token='" + token + "' value='" + value + "'");
+        string flagSide = Arg("flag", null);
+        CPH.LogInfo("[Scoreboard Command] token='" + token + "' value='" + value + "'"
+            + (flagSide == null ? "" : " flag='" + flagSide + "'"));
 
         // Player-slot commands share one shape: p<N><op>. Peel the slot index off
         // once instead of enumerating 4 slots × 5 ops as switch cases.
@@ -91,7 +97,16 @@ public class CPHInline
                 case "+": SetScore("sb.p" + n + "score", Score("sb.p" + n + "score") + 1); break;
                 case "-": SetScore("sb.p" + n + "score", Score("sb.p" + n + "score") - 1); break;
                 case "score": SetScore("sb.p" + n + "score", ParseInt(value, 0)); break;
-                case "name": CPH.SetGlobalVar("sb.p" + n + "name", value, true); break;
+                case "name":
+                    CPH.SetGlobalVar("sb.p" + n + "name", value, true);
+                    // Optional companion arg: the control panel applies a name and that
+                    // player's flag in ONE DoAction. It must not send two — SB 1.0.4
+                    // bleeds the args of same-action DoActions that land within a few ms,
+                    // which dropped the name entirely. A bad flag only warns (SetFlag
+                    // logs it); the name still applies.
+                    string flagArg = Arg("flag", null);
+                    if (flagArg != null) SetFlag("sb.p" + n + "flag", flagArg);
+                    break;
                 case "flag": if (!SetFlag("sb.p" + n + "flag", value)) return false; break;
                 default: return Unknown(token);
             }

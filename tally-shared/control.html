@@ -139,10 +139,15 @@
     $('dot').classList.toggle('on', on);
     $('statusText').textContent = text;
   }
-  function send(command, value) {
+  // ONE DoAction per click — never two in a row to the same action. Streamer.bot
+  // 1.0.4 bleeds the arguments of DoActions that arrive within a few ms of each
+  // other into each other, so a burst silently loses a command. Extra fields ride
+  // as siblings of `value` in the same args object instead (see doSet).
+  function send(command, value, extra) {
     if (!ws || ws.readyState !== 1) return;
     var args = { command: command };
     if (value !== undefined) args.value = value;
+    if (extra) for (var k in extra) args[k] = extra[k];
     ws.send(JSON.stringify({ request: 'DoAction', id: String(++id), action: { name: CMD_ACTION }, args: args }));
   }
   function reflect(elId, val) {
@@ -247,10 +252,14 @@
 
   // ── Controls ────────────────────────────────────────────────────────────────
   // data-cmd = a bare command (score/reset/swap); data-set = a set-* command whose
-  // value comes from the input named in data-src. Setting a NAME also sends that
+  // value comes from the input named in data-src. Setting a NAME also applies that
   // player's flag box (resolved), so an autocomplete pick applies name + flag in one
-  // click. Flags are resolved client-side; unresolvable text is sent raw so the SB
-  // action logs its own warning and changes nothing.
+  // click — but both ride ONE DoAction, the name in `value` and the flag in a
+  // sibling `flag` arg. This used to be two back-to-back DoActions, which SB 1.0.4
+  // arg-bled: both invocations ran as `p<N>flag`, the name was never written, and the
+  // next broadcast snapped the input back to the old name. Flags are resolved
+  // client-side; unresolvable text is sent raw so the SB action logs its own warning
+  // and changes nothing.
   function doSet(setCmd, srcId) {
     var v = $(srcId).value;
     if (/^p[1-4]flag$/.test(setCmd)) {
@@ -258,12 +267,13 @@
       send(setCmd, f === null ? v : f);
       return;
     }
-    send(setCmd, v);
     if (/^p[1-4]name$/.test(setCmd)) {
-      var which = setCmd.slice(0, 2);
-      var fv = window.Nations.resolveFlag($(which + 'flag').value);
-      send(which + 'flag', fv === null ? $(which + 'flag').value : fv);
+      var raw = $(setCmd.slice(0, 2) + 'flag').value;
+      var fv = window.Nations.resolveFlag(raw);
+      send(setCmd, v, { flag: fv === null ? raw : fv });
+      return;
     }
+    send(setCmd, v);
   }
   document.addEventListener('click', function (e) {
     var b = e.target.closest('button'); if (!b) return;

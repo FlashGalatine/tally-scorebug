@@ -109,6 +109,12 @@ Everything runs through the one parametric `Scoreboard Command` action:
 Every `p1`/`p2` command also exists as `p3`/`p4` (`p3+`, `p4name`, `p3flag`, …) — they
 drive the extra slots of teams mode.
 
+There is one optional extra argument: alongside `command=pNname` you may pass **`flag`**,
+and that player's name and nation are applied in a single invocation. The control panel
+uses it so one **Set** click sends exactly one `DoAction` — Streamer.bot 1.0.4 bleeds the
+arguments of two `DoAction`s that reach the same action within a few milliseconds, so a
+burst silently loses one of them. Chat and Stream Deck never need it.
+
 ### Three or four teams (optional)
 
 The scorebug is two slots out of the box. For 3- and 4-way formats (crew battles,
@@ -180,7 +186,7 @@ live-reflects state, so it never fights chat or the deck.
 **Roster import (names + flags).** Paste a tournament URL in the Roster card and click
 **Import**: every entrant autocompletes, and picking a player auto-fills their flag (from
 their start.gg profile location — editable before you Set; that's the override). Setting a
-name sends the flag with it, so one click applies both.
+name sends the flag with it *in the same message*, so one click applies both.
 
 The Import button talks to a tiny local helper (it does the scraping — needed only at
 import time, never mid-match). Start it any of three ways, no terminal required:
@@ -233,6 +239,16 @@ reset, `x` swap) or `GET /mock/cmd?command=p1+`. `npm run verify:render` (needs
   (a .NET Framework 4.7.2 app) resolves a minimal default reference set. Add `System.dll`
   (or SB's own `Newtonsoft.Json.dll`) in the C# editor's **References** tab. Tally's two
   scoreboard actions need no references on purpose.
+- **Control panel: clicking Set on a name snaps the box back to the old name** (while the
+  same edit works from chat) → you're on an older `control.html` + `Scoreboard Command`
+  pair. It sent the name and the flag as two back-to-back `DoAction`s, and SB 1.0.4 bleeds
+  the arguments of same-action calls that land within a few milliseconds together: both ran
+  as `p<N>flag`, the name was never written, and the next broadcast reflected the old name
+  back into the input. SB → Logs shows the tell — two `token='p1flag'` lines and no
+  `token='p1name'`. Fix: update `tally-shared/control.html` **and** re-paste
+  [`actions/scoreboard-command.cs`](actions/scoreboard-command.cs); together they now send
+  name + flag in one call. Updating only the panel still fixes the name (the flag just
+  stops riding along until the C# is re-pasted).
 - **Import fails with "helper not running"** → start the roster helper (see above).
 - **Flags show as letters (GB) in the control panel** → Windows has no color flag-emoji
   glyphs; cosmetic and panel-only. The theme renders real SVG flags.
