@@ -1,6 +1,6 @@
 {
   "name": "tally-scorebug",
-  "version": "0.1.0",
+  "version": "1.0.10",
   "description": "A Streamer.bot-native tournament scorebug for OBS — names, scores, and nationality flags driven from chat, Stream Deck, hotkeys, or a browser control panel. No dedicated server.",
   "type": "module",
   "license": "MIT",

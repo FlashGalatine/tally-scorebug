@@ -1,14 +1,14 @@
 # Changelog
 
 All notable changes to **Tally** are recorded here. The format follows
-[Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project aims to
-follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+[Keep a Changelog](https://keepachangelog.com/en/1.1.0/); the patch number
+tracks the repository's commit count at release time.
 
-Nothing has been tagged since the initial release, so every change that landed
-afterwards sits under **Unreleased**. Commit hashes and landing dates are noted
-for traceability.
+Nothing was tagged between the initial release and 1.0.10, so that release
+collects every change in between. Commit hashes and landing dates are noted for
+traceability.
 
-## [Unreleased]
+## [1.0.10] — 2026-07-29
 
 ### Added
 
@@ -107,4 +107,4 @@ Initial release — Streamer.bot-native tournament scorebug for OBS. (`d90adf2`)
 Primetime theme and roster scrapers vendored from StreamScoreboard (same
 author, MIT).
 
-[Unreleased]: https://github.com/FlashGalatine/tally-scorebug/compare/d90adf2...main
+[1.0.10]: https://github.com/FlashGalatine/tally-scorebug/compare/d90adf2...main
