@@ -56,7 +56,9 @@ const state = {
 // Mirror of the C# "Scoreboard Command" dispatch — the single control surface.
 // `flag` is the optional companion arg that rides along with a pNname command, so the
 // control panel applies name + flag in ONE DoAction (SB 1.0.4 arg-bleeds bursts).
-function applyCommand(command, value, flag) {
+// `extra` is the full args object — `setmany` reads its per-field sibling args
+// (pNname/pNflag/header/subheader) from it, one batched DoAction for many fields.
+function applyCommand(command, value, flag, extra) {
   const cmd = String(command || '').trim().toLowerCase();
   const val = value == null ? '' : String(value);
   const clamp = (n, lo = 0, hi = 99) => Math.max(lo, Math.min(hi, Math.trunc(n) || 0));
@@ -88,6 +90,17 @@ function applyCommand(command, value, flag) {
     case 'teams': state.teams = clamp(parseInt(val, 10) || 2, 2, 4); break;
     case 'header': state.header = val; break;
     case 'subheader': state.subheader = val; break;
+    case 'setmany': { // mirror of the C# SetMany(): apply every present field, bad flags skip
+      const a = extra || {};
+      let any = false;
+      for (let i = 1; i <= 4; i++) {
+        if (a['p' + i + 'name'] != null) { state['p' + i + 'name'] = String(a['p' + i + 'name']).trim(); any = true; }
+        if (a['p' + i + 'flag'] != null) { const f = resolveFlag(String(a['p' + i + 'flag'])); if (f != null) state['p' + i + 'flag'] = f; any = true; }
+      }
+      if (a.header != null) { state.header = String(a.header).trim(); any = true; }
+      if (a.subheader != null) { state.subheader = String(a.subheader).trim(); any = true; }
+      return any;
+    }
     default: return false;
   }
   return true;
@@ -176,7 +189,7 @@ const http = createServer(async (req, res) => {
   const query = new URLSearchParams(url.split('?')[1] || '');
 
   if (path === '/mock/cmd') {
-    const ok = applyCommand(query.get('command'), query.get('value'), query.get('flag'));
+    const ok = applyCommand(query.get('command'), query.get('value'), query.get('flag'), Object.fromEntries(query));
     if (ok) broadcast();
     res.writeHead(ok ? 200 : 400, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ ok, state }));
@@ -229,7 +242,7 @@ wss.on('connection', (ws) => {
     } else if (m.request === 'DoAction') {
       ws.send(JSON.stringify({ id: m.id, status: 'ok' }));
       const name = m.action && m.action.name;
-      if (name === 'Scoreboard Command' && m.args && applyCommand(m.args.command, m.args.value, m.args.flag)) {
+      if (name === 'Scoreboard Command' && m.args && applyCommand(m.args.command, m.args.value, m.args.flag, m.args)) {
         broadcast(); // mutate + notify all overlays (mimics Scoreboard Command → Scoreboard Push)
       } else if (ws.subscribedCustom) {
         ws.send(stateMessage()); // Scoreboard Push / sync-on-connect re-broadcast

@@ -115,6 +115,12 @@ uses it so one **Set** click sends exactly one `DoAction` — Streamer.bot 1.0.4
 arguments of two `DoAction`s that reach the same action within a few milliseconds, so a
 burst silently loses one of them. Chat and Stream Deck never need it.
 
+For the same reason there is a batched command, **`setmany`**: each sibling argument
+present among `p1name`…`p4name`, `p1flag`…`p4flag`, `header`, `subheader` is applied in
+one invocation (absent ones untouched; a bad flag warns and skips just that field). The
+control panel uses it to flush every edited-but-unset field on any **Set** click — edit
+Player 1 *and* Player 2, click Set once, both land. Chat and Stream Deck never need it.
+
 ### Three or four teams (optional)
 
 The scorebug is two slots out of the box. For 3- and 4-way formats (crew battles,
@@ -181,7 +187,10 @@ add it as a **Custom Browser Dock** (View → Docks → Custom Browser Docks). N
 autocomplete, flag fields with alias resolution + live preview, score buttons,
 titles, reset/swap, and a **Teams** selector (the Player 3/4 cards appear when you
 pick 3 or 4). It drives the same `Scoreboard Command` over SB's WebSocket and
-live-reflects state, so it never fights chat or the deck.
+live-reflects state, so it never fights chat or the deck. Edited-but-unset fields are
+protected from that live reflection, and **any Set click applies every edited field at
+once** (one batched `setmany` message) — so you can type both players' names and click a
+single Set.
 
 **Roster import (names + flags).** Paste a tournament URL in the Roster card and click
 **Import**: every entrant autocompletes, and picking a player auto-fills their flag (from

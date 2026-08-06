@@ -8,6 +8,20 @@ Nothing was tagged between the initial release and 1.0.10, so that release
 collects every change in between. Commit hashes and landing dates are noted for
 traceability.
 
+## [Unreleased]
+
+### Added
+
+- **Batched Set (`setmany`).** New panel-only command applying many text fields
+  (`pNname`/`pNflag`/`header`/`subheader` sibling args) in ONE `DoAction` — the
+  SB 1.0.4 arg-bleed rule means a multi-field apply must never be a burst. The
+  control panel now tracks *dirty* (edited-but-unset) fields: broadcasts no
+  longer snap a typed-but-unset input back to its old value, and any **Set**
+  click flushes all dirty fields at once — edit Player 1 and Player 2, click one
+  Set, both land. Single-field Sets keep the existing chat-compatible commands;
+  name + own flag keeps the companion-`flag` form. `verify` 61/61,
+  `verify:render` 21/21.
+
 ## [1.0.10] — 2026-07-29
 
 ### Added

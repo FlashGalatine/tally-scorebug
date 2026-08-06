@@ -172,6 +172,33 @@ async function main() {
     check("flag override: 'uk' alias → gb.svg on the strip", flagOverride,
       await stripPage.evaluate(() => (document.getElementById('flag') || {}).src || '(no img)'));
 
+    // ── Batched Set: edit BOTH players, click Set once, both land ─────────────
+    // First the dirty guard: a typed-but-unset edit must survive a broadcast
+    // (this was the bug — reflect() snapped Player 2's box back to the old name).
+    await ctrlPage.fill('#p2name', 'Kakeru');
+    await ctrlPage.click('button[data-cmd="p1+"]'); // triggers a state broadcast
+    const dirtyKept = await ctrlPage.waitForFunction(
+      () => document.getElementById('p1score').textContent.trim() === '3' && document.getElementById('p2name').value === 'Kakeru',
+      { timeout: 6000 }).then(() => true).catch(() => false);
+    check('typed-but-unset Player 2 name survives a broadcast (dirty guard)', dirtyKept,
+      await ctrlPage.evaluate(() => document.getElementById('p2name').value));
+    // Then the flush: editing P1 too and clicking ONE Set sends ONE setmany
+    // DoAction carrying both players (a burst would arg-bleed on real SB).
+    await ctrlPage.fill('#p1name', 'MenaRD');
+    await ctrlPage.evaluate(() => { window.__sent.length = 0; });
+    await ctrlPage.click('button[data-set="p1name"]');
+    const sentBatch = await ctrlPage.evaluate(() => window.__sent.map((s) => { try { return JSON.parse(s); } catch { return null; } }).filter(Boolean));
+    const batchDo = sentBatch.filter((m) => m.request === 'DoAction');
+    check('two-player edit + one Set click emits ONE setmany DoAction',
+      batchDo.length === 1 && batchDo[0]?.args?.command === 'setmany'
+      && batchDo[0]?.args?.p1name === 'MenaRD' && batchDo[0]?.args?.p2name === 'Kakeru',
+      JSON.stringify(batchDo.map((m) => m.args)));
+    const bothLanded = await stripPage.waitForFunction(
+      () => document.getElementById('pname').textContent.trim() === 'MenaRD', { timeout: 6000 }).then(() => true).catch(() => false)
+      && await ctrlPage.evaluate(() => document.getElementById('p2name').value === 'Kakeru');
+    check('setmany applied both names (strip shows P1, panel keeps P2)', !!bothLanded,
+      await stripPage.evaluate(() => document.getElementById('pname').textContent));
+
     const rosterOK = await ctrlPage.waitForFunction(() => {
       const dl = document.getElementById('roster'); return dl && dl.options.length >= 4;
     }, { timeout: 5000 }).then(() => ctrlPage.evaluate(() => ({

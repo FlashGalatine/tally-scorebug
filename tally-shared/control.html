@@ -116,7 +116,10 @@
 // Names autocomplete from tally-shared/roster.json (written by import-roster.mjs or the
 // Import button → roster-helper.mjs) via a native <datalist>. Picking a roster player
 // who has a flag auto-fills the flag box (editable before Set — that's the override).
-// Setting a name also sends the flag box, so one Set applies both.
+// Setting a name also sends the flag box, so one Set applies both. Edited-but-unset
+// fields are "dirty": broadcasts don't overwrite them, and ANY Set click flushes
+// every dirty field in one batched DoAction (`setmany`) — edit Player 1 and
+// Player 2, click Set once, both land.
 //
 // Flags accept an ISO code (jp), a nation name/alias (japan, uk, britain…), a flag
 // emoji, or none/clear — resolved by nations.js (same table the SB C# action carries).
@@ -133,6 +136,12 @@
   var CMD_ACTION = 'Scoreboard Command';
   var ws = null, id = 0, delay = 1500;
   var rosterPlayers = new Map(); // name → flag emoji | null
+  // Text fields with edits the user hasn't Set yet. Broadcasts skip dirty inputs
+  // (so setting Player 1 no longer snaps a typed-but-unset Player 2 back to its
+  // old value), and any Set click flushes ALL dirty fields in one `setmany`
+  // DoAction — edit both players, click either Set, both apply.
+  var TEXT_FIELDS = ['p1name', 'p2name', 'p3name', 'p4name', 'p1flag', 'p2flag', 'p3flag', 'p4flag', 'header', 'subheader'];
+  var dirty = {}; // field id → true
 
   function $(id) { return document.getElementById(id); }
   function setStatus(on, text) {
@@ -152,7 +161,7 @@
   }
   function reflect(elId, val) {
     var el = $(elId);
-    if (el && document.activeElement !== el) el.value = (val == null ? '' : val);
+    if (el && document.activeElement !== el && !dirty[elId]) el.value = (val == null ? '' : val);
   }
   function updatePreview(which) {
     var raw = $(which + 'flag').value;
@@ -221,12 +230,16 @@
   function wireAutofill(which) {
     $(which + 'name').addEventListener('input', function (e) {
       var flag = rosterPlayers.get(e.target.value);
-      if (flag) { $(which + 'flag').value = flag; updatePreview(which); }
+      if (flag) { $(which + 'flag').value = flag; dirty[which + 'flag'] = true; updatePreview(which); }
     });
   }
   ['p1', 'p2', 'p3', 'p4'].forEach(function (which) {
     wireAutofill(which);
     $(which + 'flag').addEventListener('input', function () { updatePreview(which); });
+  });
+  // Any user edit marks the field dirty until it's Set (see the `dirty` note above).
+  TEXT_FIELDS.forEach(function (f) {
+    $(f).addEventListener('input', function () { dirty[f] = true; });
   });
 
   // ── Streamer.bot connection ──────────────────────────────────────────────────
@@ -252,28 +265,36 @@
 
   // ── Controls ────────────────────────────────────────────────────────────────
   // data-cmd = a bare command (score/reset/swap); data-set = a set-* command whose
-  // value comes from the input named in data-src. Setting a NAME also applies that
-  // player's flag box (resolved), so an autocomplete pick applies name + flag in one
-  // click — but both ride ONE DoAction, the name in `value` and the flag in a
-  // sibling `flag` arg. This used to be two back-to-back DoActions, which SB 1.0.4
-  // arg-bled: both invocations ran as `p<N>flag`, the name was never written, and the
-  // next broadcast snapped the input back to the old name. Flags are resolved
-  // client-side; unresolvable text is sent raw so the SB action logs its own warning
-  // and changes nothing.
+  // value comes from the input named in data-src. All multi-field sends ride ONE
+  // DoAction (companion `flag` arg, or `setmany` sibling args) — never a burst of
+  // DoActions, which SB 1.0.4 arg-bleeds: both invocations ran as `p<N>flag`, the
+  // name was never written, and the next broadcast snapped the input back to the
+  // old name.
+  // A Set click flushes the clicked field PLUS every other dirty text field, all in
+  // one DoAction (never a burst — see send()). One dirty field → the same single
+  // command chat uses; a name + its own flag → the companion-`flag` form (works
+  // against the older C# too); anything more → `setmany`, one sibling arg per
+  // field, so "edit Player 1 and Player 2, click Set once" applies both.
   function doSet(setCmd, srcId) {
-    var v = $(srcId).value;
-    if (/^p[1-4]flag$/.test(setCmd)) {
-      var f = window.Nations.resolveFlag(v);
-      send(setCmd, f === null ? v : f);
+    dirty[srcId] = true; // the clicked field always sends, edited or not
+    var companion = /^p[1-4]name$/.test(setCmd) ? setCmd.slice(0, 2) + 'flag' : null;
+    if (companion) dirty[companion] = true; // a name Set always carries its flag box
+    var fields = TEXT_FIELDS.filter(function (f) { return dirty[f]; });
+    var vals = {};
+    fields.forEach(function (f) {
+      var v = $(f).value;
+      // Flags resolve client-side; unresolvable text is sent raw so the SB action
+      // logs its own warning and leaves that flag unchanged.
+      if (/flag$/.test(f)) { var r = window.Nations.resolveFlag(v); if (r !== null) v = r; }
+      vals[f] = v;
+      delete dirty[f];
+    });
+    if (fields.length === 1) { send(fields[0], vals[fields[0]]); return; }
+    if (fields.length === 2 && companion && fields.indexOf(companion) >= 0) {
+      send(setCmd, vals[setCmd], { flag: vals[companion] });
       return;
     }
-    if (/^p[1-4]name$/.test(setCmd)) {
-      var raw = $(setCmd.slice(0, 2) + 'flag').value;
-      var fv = window.Nations.resolveFlag(raw);
-      send(setCmd, v, { flag: fv === null ? raw : fv });
-      return;
-    }
-    send(setCmd, v);
+    send('setmany', undefined, vals);
   }
   document.addEventListener('click', function (e) {
     var b = e.target.closest('button'); if (!b) return;

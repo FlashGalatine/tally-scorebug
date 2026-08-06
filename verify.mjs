@@ -194,6 +194,22 @@ async function main() {
       JSON.stringify(badFlag?.player1));
     ctrl.send(JSON.stringify({ request: 'DoAction', id: 'c6', action: { name: 'Scoreboard Command' }, args: { command: 'p1name', value: 'Player 1', flag: 'none' } }));
     await next();
+
+    // `setmany`: many text fields in ONE DoAction — the "edit Player 1 AND Player 2,
+    // click Set once" panel flow. Same arg-bleed rationale as the companion flag.
+    ctrl.send(JSON.stringify({ request: 'DoAction', id: 'c7', action: { name: 'Scoreboard Command' }, args: { command: 'setmany', p1name: 'MenaRD', p1flag: 'dominican republic', p2name: 'Kakeru', p2flag: 'japan', header: 'Grand Finals' } }));
+    const many = await next();
+    check('setmany applies both players + header in one DoAction',
+      many?.player1?.name === 'MenaRD' && many?.player2?.name === 'Kakeru'
+      && many?.player2?.fields?.flag === JP && many?.header === 'Grand Finals',
+      JSON.stringify({ p1: many?.player1, p2: many?.player2, header: many?.header }));
+    // A typo'd flag in the batch skips only that field — the rest still lands.
+    ctrl.send(JSON.stringify({ request: 'DoAction', id: 'c8', action: { name: 'Scoreboard Command' }, args: { command: 'setmany', p1name: 'Player 1', p1flag: 'florpland', p2name: 'Player 2', p2flag: 'none', header: 'HEADER', subheader: '' } }));
+    const many2 = await next();
+    check('setmany bad flag skips that field, rest of batch applies',
+      many2?.player1?.name === 'Player 1' && many2?.player2?.name === 'Player 2'
+      && many2?.player2?.fields?.flag === undefined && many2?.header === 'HEADER',
+      JSON.stringify({ p1: many2?.player1, p2: many2?.player2 }));
     ctrl.close();
 
     // ── 3. HTTP: SB-style serving of the shim + untouched themes ───────────────
@@ -231,8 +247,12 @@ async function main() {
     // Both halves of the one-DoAction name+flag fix must exist, or a Set silently
     // half-applies: the panel sends the companion arg, the C# has to read it.
     const cmdSrc = await readFile(resolve(__dirname, 'actions', 'scoreboard-command.cs'), 'utf8');
-    check('control.html sends the flag as a companion arg (not a 2nd DoAction)', /send\(setCmd,\s*v,\s*\{\s*flag:/.test(ctrlBody));
+    check('control.html sends the flag as a companion arg (not a 2nd DoAction)', /send\(setCmd,\s*vals\[setCmd\],\s*\{\s*flag:/.test(ctrlBody));
     check('scoreboard-command.cs reads the companion `flag` arg', /Arg\("flag"/.test(cmdSrc));
+    // The batched-Set halves: the panel tracks dirty fields + sends `setmany`,
+    // and the C# dispatches it — missing either side half-applies a multi-edit.
+    check('control.html tracks dirty fields + batches via setmany', /dirty\[f\]/.test(ctrlBody) && /send\('setmany'/.test(ctrlBody));
+    check('scoreboard-command.cs dispatches setmany', /case "setmany"/.test(cmdSrc) && /"setmany",/.test(cmdSrc));
     const natRes = await fetch(`${BASE}/tally-shared/nations.js`);
     check('/tally-shared/nations.js 200 javascript', natRes.status === 200 && (natRes.headers.get('content-type') || '').includes('javascript'));
     await natRes.arrayBuffer();

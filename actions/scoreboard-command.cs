@@ -22,6 +22,11 @@
 //           one DoAction — two DoActions to this action within a few ms arg-bleed on
 //           SB 1.0.4 and the name silently never lands. Chat never sends it.
 //
+// command=setmany (panel-only): apply MANY text fields in one invocation — each
+// present sibling arg among p1name…p4name, p1flag…p4flag, header, subheader is
+// applied, absent ones are untouched. Same arg-bleed rationale: "edit both players,
+// click Set once" must be a single DoAction.
+//
 // TEAMS: the scorebug is 2 slots by default. `teams 3` / `teams 4` (clamped 2–4)
 // enables the extra slots — "Scoreboard Push" then includes player3/player4 in every
 // broadcast and the control panel shows their cards. p3/p4 commands always store
@@ -51,7 +56,7 @@ public class CPHInline
         "reset", "swap", "teams",
         "p1name", "p2name", "p3name", "p4name",
         "p1flag", "p2flag", "p3flag", "p4flag",
-        "header", "subheader",
+        "header", "subheader", "setmany",
     };
 
     public bool Execute()
@@ -122,6 +127,7 @@ public class CPHInline
                 break;
             case "header": CPH.SetGlobalVar("sb.header", value, true); break;
             case "subheader": CPH.SetGlobalVar("sb.subheader", value, true); break;
+            case "setmany": if (!SetMany()) return false; break;
             default: return Unknown(token);
         }
 
@@ -129,6 +135,32 @@ public class CPHInline
         // DoAction-on-connect fires, so live edits and sync share one code path.
         CPH.RunAction("Scoreboard Push");
         return true;
+    }
+
+    // `setmany` — every text field the control panel edits, batched into ONE
+    // DoAction: each present sibling arg (p1name…p4name, p1flag…p4flag, header,
+    // subheader) is applied; absent args leave their field untouched. This exists
+    // because SB 1.0.4 arg-bleeds two same-action DoActions that land within a few
+    // ms of each other — "edit Player 1 AND Player 2, click Set once" must be one
+    // call. A bad flag only warns (SetFlag logs it) and skips that field; the rest
+    // of the batch still applies. Panel-only — chat and Stream Deck keep the
+    // single-field commands above.
+    bool SetMany()
+    {
+        bool any = false;
+        for (int i = 1; i <= 4; i++)
+        {
+            string nm = Arg("p" + i + "name", null);
+            if (nm != null) { CPH.SetGlobalVar("sb.p" + i + "name", nm.Trim(), true); any = true; }
+            string fl = Arg("p" + i + "flag", null);
+            if (fl != null) { SetFlag("sb.p" + i + "flag", fl); any = true; }
+        }
+        string h = Arg("header", null);
+        if (h != null) { CPH.SetGlobalVar("sb.header", h.Trim(), true); any = true; }
+        string sh = Arg("subheader", null);
+        if (sh != null) { CPH.SetGlobalVar("sb.subheader", sh.Trim(), true); any = true; }
+        if (!any) CPH.LogWarn("[Scoreboard Command] setmany carried no fields (expected sibling args pNname/pNflag/header/subheader)");
+        return any;
     }
 
     bool Unknown(string token)
