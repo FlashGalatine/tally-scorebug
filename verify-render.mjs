@@ -128,7 +128,32 @@ async function main() {
       () => document.getElementById('p1score').textContent.trim() === '2', { timeout: 6000 }).then(() => true).catch(() => false);
     check('control panel "+" button bumps the score to 2', ctrlBump, await ctrlPage.evaluate(() => document.getElementById('p1score').textContent));
 
-    await ctrlPage.fill('#p1name', 'Vamp Fatale');
+    // ── In-page typeahead (replaces the native <datalist>) ────────────────────
+    // OBS docks/sources are CEF *Alloy-style* browsers: Chromium draws <datalist>
+    // suggestions with the browser's Autofill popup, which Alloy CEF does not have
+    // (CEF issue #906, wontfix) — the list worked in Chrome/Firefox tabs and showed
+    // nothing in an OBS dock. So the suggestions are rendered IN the page.
+    await ctrlPage.evaluate(() => { window.__sent.length = 0; });
+    await ctrlPage.fill('#p1name', 'vam');
+    const taOpen = await ctrlPage.waitForFunction(() => {
+      const ul = document.getElementById('p1suggest');
+      return ul && !ul.hidden && ul.querySelectorAll('[role="option"]').length === 1 && ul.textContent.includes('Vamp Fatale');
+    }, { timeout: 4000 }).then(() => true).catch(() => false);
+    const noDatalist = await ctrlPage.evaluate(() => !document.getElementById('p1name').hasAttribute('list') && !document.querySelector('datalist'));
+    check('typing a roster prefix opens the in-page suggestion list (no native <datalist>)', taOpen && noDatalist,
+      await ctrlPage.evaluate(() => { const ul = document.getElementById('p1suggest'); return ul ? ('hidden=' + ul.hidden + ' ' + ul.textContent) : '(no #p1suggest)'; }));
+
+    // Keyboard pick: ArrowDown highlights, Enter picks — and that Enter must NOT be
+    // the "Enter in a name box = Set" shortcut (no DoAction until the user Sets).
+    await ctrlPage.keyboard.press('ArrowDown');
+    await ctrlPage.keyboard.press('Enter');
+    const picked = await ctrlPage.waitForFunction(
+      () => document.getElementById('p1name').value === 'Vamp Fatale' && document.getElementById('p1suggest').hidden,
+      { timeout: 4000 }).then(() => true).catch(() => false);
+    const enterDidNotSet = await ctrlPage.evaluate(() => !window.__sent.some((s) => s.includes('"DoAction"')));
+    check('ArrowDown + Enter picks the suggestion and closes the list (no Set fired)', picked && enterDidNotSet,
+      await ctrlPage.evaluate(() => document.getElementById('p1name').value + ' / sent=' + window.__sent.length));
+
     // Roster autofill: picking/typing an exact roster name fills that player's flag.
     const autofill = await ctrlPage.waitForFunction(
       (jp) => document.getElementById('p1flag').value === jp && document.getElementById('p1flagprev').textContent === jp,
@@ -199,14 +224,32 @@ async function main() {
     check('setmany applied both names (strip shows P1, panel keeps P2)', !!bothLanded,
       await stripPage.evaluate(() => document.getElementById('pname').textContent));
 
-    const rosterOK = await ctrlPage.waitForFunction(() => {
-      const dl = document.getElementById('roster'); return dl && dl.options.length >= 4;
-    }, { timeout: 5000 }).then(() => ctrlPage.evaluate(() => ({
-      count: document.getElementById('roster').options.length,
-      has: Array.from(document.getElementById('roster').options).some((o) => o.value === 'Vamp Fatale'),
-      bound: document.getElementById('p1name').getAttribute('list') === 'roster',
-    }))).catch(() => ({ count: 0, has: false, bound: false }));
-    check('roster.json → <datalist> autocomplete (name inputs bound)', rosterOK.count >= 4 && rosterOK.has && rosterOK.bound, JSON.stringify(rosterOK));
+    // Browse: an empty name box + ArrowDown lists the whole roster; Escape closes it.
+    await ctrlPage.fill('#p2name', '');
+    await ctrlPage.keyboard.press('ArrowDown');
+    const browse = await ctrlPage.waitForFunction(() => {
+      const ul = document.getElementById('p2suggest'); return ul && !ul.hidden && ul.querySelectorAll('[role="option"]').length === 4;
+    }, { timeout: 4000 }).then(() => true).catch(() => false);
+    check('empty name + ArrowDown browses the full roster (4 entrants)', browse,
+      await ctrlPage.evaluate(() => { const ul = document.getElementById('p2suggest'); return ul ? ('hidden=' + ul.hidden + ' n=' + ul.querySelectorAll('[role="option"]').length) : '(no #p2suggest)'; }));
+    await ctrlPage.keyboard.press('Escape');
+    const escClosed = await ctrlPage.waitForFunction(
+      () => document.getElementById('p2suggest').hidden && document.getElementById('p2name').value === '',
+      { timeout: 4000 }).then(() => true).catch(() => false);
+    check('Escape closes the list without touching the box', escClosed);
+
+    // Substring match + mouse pick: "thunder" finds Wicked Thunder; clicking it fills the box.
+    await ctrlPage.fill('#p2name', 'thunder');
+    const subMatch = await ctrlPage.waitForFunction(() => {
+      const ul = document.getElementById('p2suggest');
+      return ul && !ul.hidden && ul.querySelectorAll('[role="option"]').length === 1 && ul.textContent.includes('Wicked Thunder');
+    }, { timeout: 4000 }).then(() => true).catch(() => false);
+    if (subMatch) await ctrlPage.click('#p2suggest [role="option"]');
+    const clicked = await ctrlPage.waitForFunction(
+      () => document.getElementById('p2name').value === 'Wicked Thunder' && document.getElementById('p2suggest').hidden,
+      { timeout: 4000 }).then(() => true).catch(() => false);
+    check('substring match ("thunder") + click picks Wicked Thunder', subMatch && clicked,
+      await ctrlPage.evaluate(() => document.getElementById('p2name').value));
 
     // ── Teams mode: P3 strip hides at 2 teams, paints at 3+, control cards follow ─
     const p3Page = await browser.newPage({ viewport: { width: 545, height: 63 }, deviceScaleFactor: 2 });

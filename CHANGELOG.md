@@ -22,6 +22,21 @@ traceability.
   name + own flag keeps the companion-`flag` form. `verify` 61/61,
   `verify:render` 21/21.
 
+### Fixed
+
+- **Name autocomplete did nothing inside the OBS dock.** The control panel's roster
+  suggestions were a native `<datalist>`, which worked in Chrome/Firefox tabs but
+  never appeared when the panel ran as an OBS Custom Browser Dock: OBS docks (and
+  browser sources) are CEF *Alloy-style* browsers, and Chromium draws `<datalist>`
+  suggestions with the browser's own Autofill popup, which Alloy CEF does not
+  implement (CEF #906, wontfix). The suggestions are now an in-page listbox under
+  each name box — same roster source, same flag autofill on pick — so the dock
+  behaves like a tab: type to filter (case/accent-insensitive substring, prefix
+  matches first, matched text highlighted, flag shown), ↓ on an empty box browses
+  the roster, ↑/↓ move, Enter or click picks, Esc/blur close; Enter without a
+  highlighted row is still the "Set" shortcut. Evo-sized rosters render the first
+  200 matches and say how many more. `verify` 61/61, `verify:render` 25/25.
+
 ## [1.0.10] — 2026-07-29
 
 ### Added

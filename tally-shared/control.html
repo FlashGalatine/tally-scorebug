@@ -39,6 +39,19 @@
   .actions button { flex:1; }
   .danger { border-color:#7f1d1d; } .danger:hover { background:#3a1616; }
   .rosterinfo { font-size:12px; color:var(--sub); flex:1; }
+  /* In-page roster suggestions (a <ul role=listbox> under each name box). Not a
+     <datalist>: OBS docks/sources are CEF Alloy-style browsers, which never render
+     the browser's native datalist/autofill popup — see the roster section below. */
+  .ta { flex:1; min-width:0; position:relative; display:flex; }
+  .suggest { position:absolute; top:calc(100% + 4px); left:0; right:0; z-index:20; margin:0; padding:4px; list-style:none; background:#1b1d25; border:1px solid var(--line); border-radius:8px; box-shadow:0 10px 28px rgba(0,0,0,.55); max-height:230px; overflow-y:auto; }
+  .suggest[hidden] { display:none; }
+  .suggest li { display:flex; align-items:center; gap:8px; padding:6px 8px; border-radius:5px; cursor:pointer; white-space:nowrap; overflow:hidden; }
+  .suggest li .fl { width:22px; text-align:center; flex:none; font-size:16px; }
+  .suggest li .nm { overflow:hidden; text-overflow:ellipsis; }
+  .suggest li.active { background:var(--accent); color:#fff; }
+  .suggest li.more { color:var(--sub); font-size:12px; cursor:default; }
+  .suggest mark { background:none; color:var(--accent); font-weight:700; }
+  .suggest li.active mark { color:#fff; }
 </style>
 </head>
 <body>
@@ -48,28 +61,28 @@
 
   <div class="card p1">
     <h2>Player 1</h2>
-    <div class="row"><input type="text" id="p1name" placeholder="Player 1 name" autocomplete="off" list="roster"><button class="set" data-set="p1name" data-src="p1name">Set</button></div>
+    <div class="row"><span class="ta"><input type="text" id="p1name" placeholder="Player 1 name" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="p1suggest"><ul class="suggest" id="p1suggest" role="listbox" hidden></ul></span><button class="set" data-set="p1name" data-src="p1name">Set</button></div>
     <div class="row"><input type="text" id="p1flag" placeholder="Flag &mdash; jp, japan, or emoji" autocomplete="off"><span class="flagprev" id="p1flagprev">&mdash;</span><button class="set" data-set="p1flag" data-src="p1flag">Set</button></div>
     <div class="row score"><span class="tag">P1</span><button class="bump" data-cmd="p1-">&minus;</button><span class="val" id="p1score">0</span><button class="bump" data-cmd="p1+">+</button></div>
   </div>
 
   <div class="card p2">
     <h2>Player 2</h2>
-    <div class="row"><input type="text" id="p2name" placeholder="Player 2 name" autocomplete="off" list="roster"><button class="set" data-set="p2name" data-src="p2name">Set</button></div>
+    <div class="row"><span class="ta"><input type="text" id="p2name" placeholder="Player 2 name" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="p2suggest"><ul class="suggest" id="p2suggest" role="listbox" hidden></ul></span><button class="set" data-set="p2name" data-src="p2name">Set</button></div>
     <div class="row"><input type="text" id="p2flag" placeholder="Flag &mdash; jp, japan, or emoji" autocomplete="off"><span class="flagprev" id="p2flagprev">&mdash;</span><button class="set" data-set="p2flag" data-src="p2flag">Set</button></div>
     <div class="row score"><span class="tag">P2</span><button class="bump" data-cmd="p2-">&minus;</button><span class="val" id="p2score">0</span><button class="bump" data-cmd="p2+">+</button></div>
   </div>
 
   <div class="card p3 hide" id="card-p3">
     <h2>Player 3</h2>
-    <div class="row"><input type="text" id="p3name" placeholder="Player 3 name" autocomplete="off" list="roster"><button class="set" data-set="p3name" data-src="p3name">Set</button></div>
+    <div class="row"><span class="ta"><input type="text" id="p3name" placeholder="Player 3 name" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="p3suggest"><ul class="suggest" id="p3suggest" role="listbox" hidden></ul></span><button class="set" data-set="p3name" data-src="p3name">Set</button></div>
     <div class="row"><input type="text" id="p3flag" placeholder="Flag &mdash; jp, japan, or emoji" autocomplete="off"><span class="flagprev" id="p3flagprev">&mdash;</span><button class="set" data-set="p3flag" data-src="p3flag">Set</button></div>
     <div class="row score"><span class="tag">P3</span><button class="bump" data-cmd="p3-">&minus;</button><span class="val" id="p3score">0</span><button class="bump" data-cmd="p3+">+</button></div>
   </div>
 
   <div class="card p4 hide" id="card-p4">
     <h2>Player 4</h2>
-    <div class="row"><input type="text" id="p4name" placeholder="Player 4 name" autocomplete="off" list="roster"><button class="set" data-set="p4name" data-src="p4name">Set</button></div>
+    <div class="row"><span class="ta"><input type="text" id="p4name" placeholder="Player 4 name" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="p4suggest"><ul class="suggest" id="p4suggest" role="listbox" hidden></ul></span><button class="set" data-set="p4name" data-src="p4name">Set</button></div>
     <div class="row"><input type="text" id="p4flag" placeholder="Flag &mdash; jp, japan, or emoji" autocomplete="off"><span class="flagprev" id="p4flagprev">&mdash;</span><button class="set" data-set="p4flag" data-src="p4flag">Set</button></div>
     <div class="row score"><span class="tag">P4</span><button class="bump" data-cmd="p4-">&minus;</button><span class="val" id="p4score">0</span><button class="bump" data-cmd="p4+">+</button></div>
   </div>
@@ -102,7 +115,6 @@
     </div>
   </div>
 
-  <datalist id="roster"></datalist>
 </div>
 
 <script src="nations.js"></script>
@@ -114,8 +126,9 @@
 // args, and live-reflects state so it stays in sync with chat / Stream Deck edits.
 //
 // Names autocomplete from tally-shared/roster.json (written by import-roster.mjs or the
-// Import button → roster-helper.mjs) via a native <datalist>. Picking a roster player
-// who has a flag auto-fills the flag box (editable before Set — that's the override).
+// Import button → roster-helper.mjs) via an in-page suggestion list (NOT a native
+// <datalist> — OBS docks can't render one, see the roster section). Picking a roster
+// player who has a flag auto-fills the flag box (editable before Set — that's the override).
 // Setting a name also sends the flag box, so one Set applies both. Edited-but-unset
 // fields are "dirty": broadcasts don't overwrite them, and ANY Set click flushes
 // every dirty field in one batched DoAction (`setmany`) — edit Player 1 and
@@ -188,15 +201,21 @@
     reflect('header', d.header); reflect('subheader', d.subheader);
   }
 
-  // ── Roster: datalist autocomplete + name→flag autofill ──────────────────────
+  // ── Roster: in-page typeahead + name→flag autofill ──────────────────────────
+  // Suggestions are rendered IN the page (the <ul role=listbox> under each name
+  // box), not with <datalist>: OBS custom browser docks and browser sources are CEF
+  // *Alloy-style* browsers, and Chromium draws <datalist> suggestions with the
+  // browser's own Autofill popup, which Alloy CEF does not implement (CEF issue
+  // #906, wontfix) — a datalist works in a Chrome/Firefox tab and shows nothing
+  // inside OBS. Typing filters (case/accent-insensitive substring, prefix matches
+  // first); ArrowDown on an empty box browses the whole roster; ↑/↓ move; Enter or
+  // a click picks; Esc/blur close. A pick writes the value and dispatches `input`,
+  // so the flag autofill + dirty tracking below run exactly as for typed text.
   function applyRoster(j) {
     var players = (j && Array.isArray(j.players)) ? j.players
       : (j && Array.isArray(j.names)) ? j.names.map(function (n) { return { name: n, flag: null }; })
       : [];
     rosterPlayers = new Map(players.map(function (p) { return [p.name, p.flag || null]; }));
-    var dl = $('roster');
-    dl.textContent = '';
-    players.forEach(function (p) { var o = document.createElement('option'); o.value = p.name; dl.appendChild(o); });
     var flagged = players.filter(function (p) { return p.flag; }).length;
     $('rosterInfo').textContent = players.length
       ? 'roster: ' + players.length + ' players' + (flagged ? ' (' + flagged + ' flagged)' : '') + (j.tournament ? ' · ' + j.tournament : '')
@@ -225,6 +244,97 @@
       })
       .then(function () { btn.disabled = false; });
   }
+  var MAX_SUGGEST = 200; // Evo-sized brackets: render the first 200, say how many more
+  function fold(s) { return String(s).normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase(); }
+  function wireTypeahead(which) {
+    var input = $(which + 'name'), list = $(which + 'suggest');
+    var items = [], active = -1, picking = false;
+    function close() {
+      list.hidden = true; list.textContent = ''; items = []; active = -1;
+      input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant');
+    }
+    function setActive(i) {
+      var lis = list.querySelectorAll('li[role="option"]');
+      if (active >= 0 && lis[active]) { lis[active].classList.remove('active'); lis[active].setAttribute('aria-selected', 'false'); }
+      active = i;
+      if (active >= 0 && lis[active]) {
+        lis[active].classList.add('active'); lis[active].setAttribute('aria-selected', 'true');
+        input.setAttribute('aria-activedescendant', lis[active].id);
+        if (lis[active].scrollIntoView) lis[active].scrollIntoView({ block: 'nearest' });
+      } else input.removeAttribute('aria-activedescendant');
+    }
+    function pick(i) {
+      var name = items[i]; if (name == null) return;
+      close();
+      input.value = name;
+      picking = true; // our own `input` listener must not reopen the list for a pick
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      picking = false;
+    }
+    function open(browseAll) {
+      var q = fold(input.value.trim());
+      if (!q && !browseAll) return close();
+      var starts = [], contains = [];
+      rosterPlayers.forEach(function (flag, n) {
+        var at = q ? fold(n).indexOf(q) : 0;
+        if (at === 0) starts.push(n); else if (at > 0) contains.push(n);
+      });
+      var all = starts.concat(contains);
+      if (!all.length || (all.length === 1 && all[0] === input.value)) return close();
+      items = all.slice(0, MAX_SUGGEST);
+      list.textContent = '';
+      items.forEach(function (n, i) {
+        var li = document.createElement('li');
+        li.id = which + 'opt' + i; li.setAttribute('role', 'option'); li.setAttribute('aria-selected', 'false'); li.dataset.i = i;
+        var fl = document.createElement('span'); fl.className = 'fl'; fl.textContent = rosterPlayers.get(n) || '';
+        li.appendChild(fl);
+        // Names come from scraped brackets — build text nodes, never innerHTML.
+        var nm = document.createElement('span'); nm.className = 'nm';
+        var f = fold(n), at = q ? f.indexOf(q) : -1;
+        if (at >= 0 && f.length === n.length) {
+          nm.appendChild(document.createTextNode(n.slice(0, at)));
+          var m = document.createElement('mark'); m.textContent = n.slice(at, at + q.length); nm.appendChild(m);
+          nm.appendChild(document.createTextNode(n.slice(at + q.length)));
+        } else nm.textContent = n;
+        li.appendChild(nm);
+        list.appendChild(li);
+      });
+      if (all.length > items.length) {
+        var more = document.createElement('li'); more.className = 'more'; more.setAttribute('aria-hidden', 'true');
+        more.textContent = '\u2026 ' + (all.length - items.length) + ' more \u2014 keep typing';
+        list.appendChild(more);
+      }
+      list.hidden = false; input.setAttribute('aria-expanded', 'true');
+      setActive(-1);
+    }
+    input.addEventListener('input', function () { if (!picking) open(false); });
+    input.addEventListener('keydown', function (e) {
+      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+        if (list.hidden) open(true);
+        if (list.hidden) return;
+        e.preventDefault();
+        var n = items.length, d = e.key === 'ArrowDown' ? 1 : -1;
+        setActive(((active + d) % n + n) % n);
+      } else if (e.key === 'Enter') {
+        if (list.hidden || active < 0) return; // no highlight → the page's Enter = Set shortcut applies
+        e.preventDefault(); e.stopPropagation();
+        pick(active);
+      } else if (e.key === 'Escape') {
+        if (!list.hidden) { e.preventDefault(); close(); }
+      }
+    });
+    input.addEventListener('blur', close);
+    // mousedown, not click: a click would blur the box first and close the list
+    // before it landed. preventDefault keeps focus in the box.
+    list.addEventListener('mousedown', function (e) {
+      e.preventDefault();
+      var li = e.target.closest('li[role="option"]'); if (li) pick(Number(li.dataset.i));
+    });
+    list.addEventListener('mousemove', function (e) {
+      var li = e.target.closest('li[role="option"]');
+      if (li && Number(li.dataset.i) !== active) setActive(Number(li.dataset.i));
+    });
+  }
   // Picking (or typing) an exact roster name auto-fills that player's flag — still
   // editable before Set, which is the override path.
   function wireAutofill(which) {
@@ -234,6 +344,7 @@
     });
   }
   ['p1', 'p2', 'p3', 'p4'].forEach(function (which) {
+    wireTypeahead(which);
     wireAutofill(which);
     $(which + 'flag').addEventListener('input', function () { updatePreview(which); });
   });

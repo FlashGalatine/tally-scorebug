@@ -184,7 +184,9 @@ each message parsed to.
 
 Open **`http://127.0.0.1:7474/tally-shared/control.html`** in any browser tab — or, in OBS,
 add it as a **Custom Browser Dock** (View → Docks → Custom Browser Docks). Name fields with roster
-autocomplete, flag fields with alias resolution + live preview, score buttons,
+autocomplete (suggestions are drawn by the page itself, so they work inside the OBS dock too —
+type to filter, ↓ on an empty box to browse, ↑/↓ + Enter or click to pick, Esc to close),
+flag fields with alias resolution + live preview, score buttons,
 titles, reset/swap, and a **Teams** selector (the Player 3/4 cards appear when you
 pick 3 or 4). It drives the same `Scoreboard Command` over SB's WebSocket and
 live-reflects state, so it never fights chat or the deck. Edited-but-unset fields are
@@ -259,6 +261,13 @@ reset, `x` swap) or `GET /mock/cmd?command=p1+`. `npm run verify:render` (needs
   name + flag in one call. Updating only the panel still fixes the name (the flag just
   stops riding along until the C# is re-pasted).
 - **Import fails with "helper not running"** → start the roster helper (see above).
+- **Name autocomplete shows nothing in the OBS dock** (but works in a Chrome/Firefox tab) →
+  you're on an older `control.html` that used a native `<datalist>`. OBS docks and browser
+  sources are CEF *Alloy-style* browsers, and Chromium draws `<datalist>` suggestions with
+  the browser's own Autofill popup, which Alloy CEF never implemented
+  ([CEF #906](https://github.com/chromiumembedded/cef/issues/906), wontfix). Fix: update
+  `tally-shared/control.html` — the suggestion list is now rendered by the page — and
+  reload the dock.
 - **Flags show as letters (GB) in the control panel** → Windows has no color flag-emoji
   glyphs; cosmetic and panel-only. The theme renders real SVG flags.
 - **`npm start` fails with `EADDRINUSE`/`EACCES`** → real Streamer.bot already owns
