@@ -12,6 +12,14 @@ traceability.
 
 ### Added
 
+- **Optional start.gg opponent autofill.** In 2-team mode, enable the Roster
+  card's checkbox and select a player to stage their opposing name and flag
+  from current start.gg sets. Prefer an in-progress set, otherwise require one
+  unambiguous upcoming matchup. Manual edits are protected; missing opponents
+  and ambiguous matches show a status instead. Review and Set both players
+  together; scores stay unchanged. Re-import older rosters and keep the roster
+  helper running for live lookups.
+
 - **Batched Set (`setmany`).** New panel-only command applying many text fields
   (`pNname`/`pNflag`/`header`/`subheader` sibling args) in ONE `DoAction` — the
   SB 1.0.4 arg-bleed rule means a multi-field apply must never be a burst. The

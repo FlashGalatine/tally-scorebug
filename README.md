@@ -199,8 +199,21 @@ single Set.
 their start.gg profile location — editable before you Set; that's the override). Setting a
 name sends the flag with it *in the same message*, so one click applies both.
 
+**Optional opponent autofill (start.gg, 2 teams).** Re-import your start.gg roster,
+then enable **Auto-fill opponent from start.gg (2 teams)** in the Roster card
+(off by default). Picking or typing an exact imported player name in either slot
+looks up current sets and stages the opposing name and flag. An in-progress set
+takes priority; otherwise there must be exactly one upcoming matchup. Unknown
+opponents, byes, completed sets, duplicate player names, and ambiguous matchups
+leave the opposing fields alone with a status message. Unsaved manual opposing
+edits are protected. Review the fields, then click **Set** to apply both players
+together. Scores stay unchanged. The option is disabled for 3- and 4-team layouts
+and other roster sources. Older roster files need re-importing to include IDs.
+
 The Import button talks to a tiny local helper (it does the scraping — needed only at
-import time, never mid-match). Start it any of three ways, no terminal required:
+import time unless opponent autofill is enabled). **Keep the helper running while
+using opponent autofill** so each selection reads fresh start.gg data. Start it any
+of three ways, no terminal required:
 
 - **From Streamer.bot (automatic):** third action `Roster Helper` with
   [`actions/streamerbot-roster-helper.cs`](actions/streamerbot-roster-helper.cs) — edit
@@ -235,6 +248,9 @@ panels with zero setup: drive state with the console keys (`q/a` P1 ±, `w/s` P2
 reset, `x` swap) or `GET /mock/cmd?command=p1+`. `npm run verify:render` (needs
 `npm i --no-save playwright-core`) renders the real theme headless and checks pixels;
 `npm run shots` regenerates the screenshots above.
+`npm run verify:opponent` checks roster identity and opponent selection against
+offline start.gg fixtures; `verify:render` also covers the two-slot autofill flow,
+manual overrides, and late lookup responses.
 
 ## Troubleshooting
 

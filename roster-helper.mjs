@@ -4,15 +4,17 @@
 // calls GET /import?url=<tournament-url>, this fetches the bracket via roster-lib.mjs
 // (the platform scrapers under roster/), writes tally-shared/roster.json, and returns
 // the roster in the response so the panel updates immediately.
+// GET /opponent?eventId=<id>&entrantId=<id> looks up current start.gg sets without
+// changing the imported roster or applying any scoreboard commands.
 //
-// Run it while setting up a bracket (it's only needed at import time, not mid-match):
+// Keep it running for imports and optional live start.gg opponent lookup:
 //   npm run roster          → http://127.0.0.1:7481
 //
 // CORS is wide open (Access-Control-Allow-Origin: *) because the panel is served from
 // SB's HTTP port (:7474) — a different origin than this helper.
 
 import { createServer } from 'node:http';
-import { fetchRoster, writeRoster } from './roster-lib.mjs';
+import { fetchRoster, writeRoster, fetchOpponent } from './roster-lib.mjs';
 
 const PORT = Number(process.env.ROSTER_PORT) || 7481;
 const CORS = {
@@ -27,6 +29,18 @@ createServer(async (req, res) => {
   const query = new URLSearchParams(url.split('?')[1] || '');
 
   if (req.method === 'OPTIONS') { res.writeHead(204, CORS); res.end(); return; }
+
+  if (req.method === 'GET' && path === '/opponent') {
+    try {
+      const result = await fetchOpponent(query.get('eventId'), query.get('entrantId'));
+      res.writeHead(200, { ...CORS, 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify({ ok: true, ...result }));
+    } catch (err) {
+      res.writeHead(400, { ...CORS, 'Cache-Control': 'no-store' });
+      res.end(JSON.stringify({ ok: false, error: err.message }));
+    }
+    return;
+  }
 
   if (path === '/import') {
     const target = (query.get('url') || '').trim();
@@ -50,7 +64,7 @@ createServer(async (req, res) => {
   }
 
   res.writeHead(404, CORS);
-  res.end(JSON.stringify({ ok: false, error: 'Use GET /import?url=<tournament-url>' }));
+  res.end(JSON.stringify({ ok: false, error: 'Use GET /import?url=<tournament-url> or /opponent?eventId=<id>&entrantId=<id>' }));
 }).listen(PORT, '127.0.0.1', () => {
   console.log(`[roster] helper listening on http://127.0.0.1:${PORT}  (GET /import?url=...)`);
 });

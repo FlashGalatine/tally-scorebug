@@ -18,6 +18,7 @@
     "roster": "node roster-helper.mjs",
     "import": "node import-roster.mjs",
     "verify": "node verify.mjs",
+    "verify:opponent": "node --test verify-opponent.test.mjs",
     "verify:render": "node verify-render.mjs",
     "shots": "node tools/shots.mjs"
   },

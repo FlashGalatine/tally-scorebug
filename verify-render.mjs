@@ -12,7 +12,7 @@
 import { spawn } from 'node:child_process';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { writeFile, rm } from 'node:fs/promises';
+import { readFile, writeFile, rm } from 'node:fs/promises';
 import { chromium } from 'playwright-core';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -52,6 +52,8 @@ async function main() {
   console.log('Scorebug — real-pixel render verification (Primetime)\n');
   let mock, browser;
   const rosterPath = resolve(__dirname, 'tally-shared', 'roster.json');
+  let savedRoster;
+  try { savedRoster = await readFile(rosterPath); } catch (err) { if (err.code !== 'ENOENT') throw err; }
   try {
     mock = await startMock();
     console.log(`mock SB up (:${HTTP_PORT} HTTP, :${WS_PORT} WS)\n`);
@@ -277,6 +279,8 @@ async function main() {
     check('teams 2 → P3 strip hides again', p3Rehidden);
     await p3Page.close();
 
+    await verifyOpponentAutofill(browser);
+
     await stripPage.screenshot({ path: resolve(__dirname, 'test-render.png') });
     await ctrlPage.screenshot({ path: resolve(__dirname, 'control-render.png') });
     console.log('  screenshots → test-render.png, control-render.png');
@@ -284,13 +288,183 @@ async function main() {
     failed++;
     console.log('\n  ERROR ' + ((err && err.stack) || err));
   } finally {
-    try { await rm(rosterPath); } catch {}
+    if (savedRoster) await writeFile(rosterPath, savedRoster);
+    else { try { await rm(rosterPath); } catch {} }
     if (browser) { try { await browser.close(); } catch {} }
     if (mock) mock.kill();
   }
 
   console.log(`\n${failed === 0 ? 'ALL GREEN' : 'FAILURES'}: ${passed} passed, ${failed} failed`);
   process.exit(failed === 0 ? 0 : 1);
+}
+
+async function verifyOpponentAutofill(browser) {
+  const p = await browser.newPage({ viewport: { width: 380, height: 820 } });
+  const errors = [];
+  p.on('pageerror', err => errors.push(err.message));
+  const fixture = { platform: 'startgg', tournament: 'fixture/singles', eventId: '101', players: [
+    { id: '11', name: 'Alpha', flag: '🇯🇵' }, { id: '22', name: 'Beta', flag: '🇺🇸' },
+    { id: '33', name: 'Gamma', flag: null },
+  ] };
+  let calls = 0, held, release;
+  let result = { ok: true, status: 'found', opponent: { id: '22', name: 'Beta', flag: '🇺🇸' }, set: { round: 'Winners Final' } };
+  await p.route('**/tally-shared/roster.json', route => route.fulfill({ json: fixture }));
+  await p.route('http://127.0.0.1:7481/opponent?**', async route => {
+    calls++;
+    const response = result;
+    if (held) { const wait = held; held = null; await wait; }
+    await route.fulfill({ json: response });
+  });
+  await p.addInitScript(() => {
+    window.__sent = [];
+    const send = WebSocket.prototype.send;
+    WebSocket.prototype.send = function (data) { window.__scorebugSocket = this; window.__sent.push(JSON.parse(data)); return send.call(this, data); };
+  });
+  async function fresh() {
+    await fetch(`${BASE}/mock/cmd?command=teams&value=2`);
+    await fetch(`${BASE}/mock/cmd?command=setmany&p1name=Prior%20Left&p2name=Prior%20Right&p2flag=gb`);
+    await p.goto(`${BASE}/tally-shared/control.html?sbport=${WS_PORT}`);
+    await p.waitForFunction(() => document.getElementById('rosterInfo').textContent.includes('3 players') && document.getElementById('p1name').value === 'Prior Left');
+  }
+  const waitFor = fn => p.waitForFunction(fn, null, { timeout: 3000 }).then(() => true).catch(() => false);
+  async function waitForCall(before) {
+    const until = Date.now() + 3000;
+    while (calls === before && Date.now() < until) await p.waitForTimeout(20);
+    if (calls === before) throw new Error('Expected an opponent lookup request');
+  }
+  await fresh();
+  const present = await p.locator('#autoOpponent').count() === 1;
+  check('control offers optional start.gg opponent autofill', present);
+  if (!present) { await p.close(); return; }
+  check('opponent autofill defaults off', !await p.isChecked('#autoOpponent'));
+  await p.fill('#p1name', 'Alpha');
+  check('disabled option makes no opponent request', calls === 0);
+  await p.check('#autoOpponent');
+  await p.fill('#p1name', 'alp');
+  await p.keyboard.press('ArrowDown'); await p.keyboard.press('Enter');
+  check('P1 roster pick fills opposing name and flag', await waitFor(() =>
+    document.getElementById('p2name').value === 'Beta' && document.getElementById('p2flag').value === '🇺🇸'));
+  check('lookup stages edits without sending a command', await p.evaluate(() =>
+    !window.__sent.some(m => m.action?.name === 'Scoreboard Command')));
+  await p.evaluate(() => { window.__sent.length = 0; });
+  const scores = await p.locator('.score .val').allTextContents();
+  await p.click('button[data-set="p1name"]');
+  const sent = await p.evaluate(() => window.__sent.filter(m => m.action?.name === 'Scoreboard Command'));
+  check('one Set batches both names and flags in one command', sent.length === 1 &&
+    sent[0].args.command === 'setmany' && sent[0].args.p1name === 'Alpha' && sent[0].args.p2name === 'Beta' &&
+    sent[0].args.p1flag === '🇯🇵' && sent[0].args.p2flag === '🇺🇸');
+  check('opponent autofill leaves scores unchanged', JSON.stringify(scores) === JSON.stringify(await p.locator('.score .val').allTextContents()));
+
+  await fresh(); await p.check('#autoOpponent');
+  result = { ok: true, status: 'found', opponent: { id: '11', name: 'Alpha', flag: '🇯🇵' } };
+  await p.fill('#p2name', 'Beta');
+  check('P2 selection fills P1', await waitFor(() => document.getElementById('p1name').value === 'Alpha'));
+
+  await fresh(); await p.check('#autoOpponent');
+  await p.fill('#p2name', 'Manual opponent');
+  await p.fill('#p2flag', 'gb');
+  await p.fill('#p1name', 'Alpha');
+  check('manual opposing edits are preserved with an explanation', await waitFor(() =>
+    document.getElementById('p2name').value === 'Manual opponent' && document.getElementById('p2flag').value === 'gb' &&
+    /manual/i.test(document.getElementById('opponentInfo').textContent)));
+
+  await fresh(); await p.check('#autoOpponent');
+  result = { ok: true, status: 'ambiguous', message: 'Multiple possible matchups' };
+  await p.fill('#p1name', 'Gamma');
+  check('ambiguous lookup shows status without changing the opponent', await waitFor(() =>
+    /Multiple/.test(document.getElementById('opponentInfo').textContent) && document.getElementById('p2name').value === 'Prior Right'));
+
+  await fresh(); await p.check('#autoOpponent');
+  result = { ok: true, status: 'found', opponent: { id: '33', name: 'Gamma', flag: null } };
+  held = new Promise(resolve => { release = resolve; });
+  const before = calls;
+  await p.fill('#p1name', 'Alpha');
+  await waitForCall(before);
+  await p.fill('#p2name', 'Late manual edit'); release();
+  check('manual edits made during lookup survive the response', await waitFor(() =>
+    /manual/i.test(document.getElementById('opponentInfo').textContent) && document.getElementById('p2name').value === 'Late manual edit'));
+
+  await fresh(); await p.check('#autoOpponent');
+  held = new Promise(resolve => { release = resolve; });
+  const beforeRace = calls;
+  await p.fill('#p1name', 'Alpha');
+  await waitForCall(beforeRace);
+  result = { ok: true, status: 'found', opponent: { id: '11', name: 'Alpha', flag: '🇯🇵' } };
+  await p.fill('#p1name', 'Beta');
+  check('newer player selection wins over a delayed earlier lookup', await waitFor(() => document.getElementById('p2name').value === 'Alpha'));
+  release(); await p.waitForTimeout(100);
+  check('late lookup cannot replace the newer opponent', await p.inputValue('#p2name') === 'Alpha');
+
+  await fresh(); await p.check('#autoOpponent');
+  held = new Promise(resolve => { release = resolve; });
+  const beforeTeams = calls;
+  await p.fill('#p1name', 'Gamma');
+  await waitForCall(beforeTeams);
+  await p.click('button[data-teams="3"]');
+  await p.waitForFunction(() => !document.getElementById('card-p3').classList.contains('hide'));
+  release(); await p.waitForTimeout(100);
+  check('switching to three teams disables autofill and ignores pending lookup', await p.isDisabled('#autoOpponent') && await p.inputValue('#p2name') === 'Prior Right');
+  const multiCalls = calls;
+  await p.fill('#p1name', 'Alpha'); await p.waitForTimeout(100);
+  check('three-team mode performs no opponent lookup', calls === multiCalls);
+
+  await fresh(); await p.check('#autoOpponent');
+  held = new Promise(resolve => { release = resolve; });
+  const beforeOff = calls;
+  await p.fill('#p1name', 'Gamma');
+  await waitForCall(beforeOff);
+  await p.uncheck('#autoOpponent'); release(); await p.waitForTimeout(100);
+  check('disabling autofill ignores a pending lookup', await p.inputValue('#p2name') === 'Prior Right');
+
+  await fresh(); await p.check('#autoOpponent');
+  held = new Promise(resolve => { release = resolve; });
+  const beforeSet = calls;
+  await p.fill('#p1name', 'Gamma');
+  await waitForCall(beforeSet);
+  await p.click('button[data-set="p1name"]'); release(); await p.waitForTimeout(100);
+  check('Set during lookup prevents late edits and clears the loading status', await p.inputValue('#p2name') === 'Prior Right' &&
+    !/Looking up/.test(await p.textContent('#opponentInfo')));
+
+  await fresh(); await p.check('#autoOpponent');
+  result = { ok: true, status: 'found', opponent: { id: '22', name: 'Beta', flag: '🇺🇸' } };
+  await p.fill('#p2name', 'Unsent manual opponent');
+  await p.evaluate(() => window.__scorebugSocket.close());
+  await p.waitForFunction(() => document.getElementById('statusText').textContent.includes('disconnected'));
+  await p.click('button[data-set="p2name"]');
+  await p.fill('#p1name', 'Alpha');
+  check('Set while disconnected keeps unsent manual edits protected', await waitFor(() =>
+    document.getElementById('p2name').value === 'Unsent manual opponent' && /manual/i.test(document.getElementById('opponentInfo').textContent)));
+
+  await fresh(); await p.check('#autoOpponent');
+  result = { ok: true, status: 'found', opponent: { id: '33', name: 'Gamma', flag: null } };
+  await p.fill('#p1name', 'Alpha');
+  check('opponent without country clears the previous player flag', await waitFor(() =>
+    document.getElementById('p2name').value === 'Gamma' && document.getElementById('p2flag').value === ''));
+  await p.setViewportSize({ width: 340, height: 820 });
+  check('narrow OBS dock has no horizontal overflow', await p.evaluate(() => document.documentElement.scrollWidth <= innerWidth));
+  if (process.env.TALLY_QA_DIR) await p.locator('.card').filter({ has: p.locator('#autoOpponent') }).screenshot({ path: resolve(process.env.TALLY_QA_DIR, 'opponent-roster.png') });
+
+  await fresh(); await p.check('#autoOpponent');
+  result = { ok: false, error: 'start.gg rate limit exceeded' };
+  await p.fill('#p1name', 'Alpha');
+  check('lookup errors leave opposing fields alone with a useful status', await waitFor(() =>
+    /rate limit/.test(document.getElementById('opponentInfo').textContent) && document.getElementById('p2name').value === 'Prior Right'));
+
+  await fresh(); await p.check('#autoOpponent');
+  await p.click('button[data-teams="4"]');
+  await p.waitForFunction(() => !document.getElementById('card-p4').classList.contains('hide'));
+  const fourCalls = calls;
+  await p.fill('#p1name', 'Alpha'); await p.waitForTimeout(100);
+  check('four-team mode disables opponent autofill', await p.isDisabled('#autoOpponent') && calls === fourCalls);
+
+  fixture.platform = 'sample';
+  await fresh();
+  check('other roster platforms disable opponent autofill', await p.isDisabled('#autoOpponent'));
+  fixture.platform = 'startgg'; delete fixture.eventId;
+  await fresh();
+  check('old start.gg rosters prompt re-import and cannot guess identity', await p.isDisabled('#autoOpponent') && /re-import/.test(await p.textContent('#opponentInfo')));
+  check('opponent flow raises no browser script errors', errors.length === 0, errors.join('; '));
+  await p.close();
 }
 
 main();

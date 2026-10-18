@@ -5,9 +5,10 @@
 // vendored under roster/ (Challonge, start.gg, TourneyBot, Matcherino, RoundOne —
 // from StreamScoreboard, same author, MIT) and produces tally-shared/roster.json:
 //
-//   { tournament, platform, fetchedAt, count, flagged,
+//   { tournament, platform, eventId?, fetchedAt, count, flagged,
 //     names:   ["PG | Punk", ...],                  // legacy/simple consumers
-//     players: [{ name: "PG | Punk", flag: "🇺🇸" }] } // flag = emoji or null
+//     players: [{ id?, name: "PG | Punk", flag: "🇺🇸" }] } // flag = emoji or null
+// start.gg includes event/entrant IDs for optional fresh opponent lookups.
 //
 // Flags currently come from start.gg only (profile location → country → emoji).
 // start.gg's public proxy exposed locations in live testing; if a bracket imports
@@ -21,6 +22,7 @@ import { readFile, writeFile } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { detectPlatform, listSupportedPlatforms } from './roster/platforms/index.js';
+import { startgg } from './roster/platforms/startgg.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 export const ROSTER_PATH = resolve(__dirname, 'tally-shared', 'roster.json');
@@ -57,8 +59,13 @@ export async function fetchRoster(url) {
   const byName = new Map();
   for (const p of participants) {
     const name = String(p.name || '').trim();
-    if (!name || byName.has(name)) continue;
-    byName.set(name, { name, flag: p.flag || null });
+    if (!name) continue;
+    if (byName.has(name)) {
+      // Autocomplete is name-based; duplicate names must not pick an arbitrary ID.
+      if (platform.name === 'startgg' && byName.get(name).id !== String(p.id)) byName.get(name).id = null;
+      continue;
+    }
+    byName.set(name, { ...(platform.name === 'startgg' ? { id: String(p.id) } : {}), name, flag: p.flag || null });
   }
   const players = [...byName.values()]
     .sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
@@ -66,12 +73,20 @@ export async function fetchRoster(url) {
   return {
     tournament: id,
     platform: platform.name,
+    ...(platform.name === 'startgg' ? { eventId: participants[0]?.eventId || null } : {}),
     fetchedAt: new Date().toISOString(),
     count: players.length,
     flagged: players.filter((p) => p.flag).length,
     names: players.map((p) => p.name),
     players,
   };
+}
+
+export async function fetchOpponent(eventId, entrantId) {
+  if (!/^[1-9]\d*$/.test(eventId || '') || !/^[1-9]\d*$/.test(entrantId || '')) {
+    throw new Error('Missing or invalid start.gg event / entrant ID — re-import the roster.');
+  }
+  return startgg.fetchOpponent(String(eventId), String(entrantId), await loadConfig());
 }
 
 export async function writeRoster(roster) {

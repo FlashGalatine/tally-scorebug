@@ -51,6 +51,27 @@ query StreamScoreboardEventEntrants($slug: String!, $page: Int = 1, $perPage: In
   }
 }`;
 
+// Filter by the imported entrant identity, never by a display-name guess.
+const OPPONENT_QUERY = `
+query StreamScoreboardOpponent($eventId: ID!, $entrantId: ID!, $page: Int!) {
+  event(id: $eventId) {
+    id
+    sets(page: $page, perPage: 25, sortType: STANDARD,
+      filters: { entrantIds: [$entrantId], state: [1, 2, 4, 6, 7], showByes: false }) {
+      pageInfo { totalPages }
+      nodes {
+        id state fullRoundText
+        slots {
+          entrant {
+            id name
+            participants { player { user { location { country } } } }
+          }
+        }
+      }
+    }
+  }
+}`;
+
 export const startgg = {
   name: 'startgg',
   displayName: 'start.gg',
@@ -97,6 +118,47 @@ export const startgg = {
       eventSlug = await resolveEventSlug(tournamentSlug, apiKey);
     }
     return await fetchAllEntrants(eventSlug, apiKey);
+  },
+
+  async fetchOpponent(eventId, entrantId, config) {
+    const sets = new Map();
+    let totalPages = 1;
+    for (let page = 1; page <= totalPages; page++) {
+      const data = await gql({
+        operationName: 'StreamScoreboardOpponent', query: OPPONENT_QUERY,
+        variables: { eventId, entrantId, page }, apiKey: config?.startggApiKey,
+      });
+      const conn = data?.event?.sets;
+      if (!conn || !Array.isArray(conn.nodes)) {
+        throw new Error('start.gg: current match data is unavailable');
+      }
+      totalPages = Number(conn.pageInfo?.totalPages);
+      if (!Number.isInteger(totalPages) || totalPages < 0 || totalPages > MAX_PAGES) {
+        throw new Error('start.gg: match data is incomplete or exceeds the lookup limit');
+      }
+      for (const match of conn.nodes) {
+        if (!match?.id || ![1, 2, 4, 6, 7].includes(match.state)) continue;
+        if (!match.slots?.some(s => String(s?.entrant?.id) === entrantId)) continue;
+        sets.set(String(match.id), match);
+      }
+    }
+    const active = [...sets.values()].filter(s => s.state === 2);
+    const candidates = active.length ? active : [...sets.values()];
+    if (candidates.length > 1) {
+      return { status: 'ambiguous', message: 'Multiple possible start.gg matchups — enter the opponent manually.' };
+    }
+    const match = candidates[0];
+    const slots = match?.slots;
+    const opponent = slots?.find(s => s?.entrant?.id && String(s.entrant.id) !== entrantId)?.entrant;
+    if (!slots || slots.length !== 2 || !opponent?.name ||
+        slots.filter(s => String(s?.entrant?.id) === entrantId).length !== 1) {
+      return { status: 'unavailable', message: 'No confirmed start.gg opponent yet.' };
+    }
+    return {
+      status: 'found',
+      opponent: { id: String(opponent.id), name: String(opponent.name).trim(), flag: flagFromEntrant(opponent) || null },
+      set: { id: String(match.id), round: match.fullRoundText || '', state: match.state },
+    };
   },
 };
 
@@ -204,6 +266,7 @@ async function fetchAllEntrants(slug, apiKey) {
       if (!n?.id || !n.name) continue;
       out.push({
         id: String(n.id),
+        eventId: String(event.id),
         name: String(n.name).trim(),
         seed: Number.isFinite(n.initialSeedNum) ? n.initialSeedNum : null,
         // Derived from the entrant's start.gg profile location, when set and
@@ -239,6 +302,7 @@ async function gqlOfficialApi({ operationName, query, variables, apiKey }) {
       'User-Agent': 'StreamScoreboard/0.1',
     },
     body: JSON.stringify({ operationName, variables, query }),
+    signal: AbortSignal.timeout(12000),
   });
   if (res.status === 401 || res.status === 403) {
     throw new Error('start.gg API: token rejected (check "startggApiKey" in config.json — get one at start.gg → developer settings)');
@@ -271,6 +335,7 @@ async function gqlPublicProxy({ operationName, query, variables }) {
         'apollo-client-id': 'smashgg-legacy',
       },
       body: JSON.stringify([{ operationName, variables, query }]),
+      signal: AbortSignal.timeout(12000),
     });
 
     if (res.status === 400) {
