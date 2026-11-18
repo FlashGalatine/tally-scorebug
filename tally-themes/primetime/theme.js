@@ -3,7 +3,7 @@
 // ESPN-style broadcast plates. Combined player strips (score | flag | name)
 // plus a trapezoid title. Auto-fit typography (the name row wraps onto a
 // second line rather than shrinking below readable size), a score bump on
-// change, full-bleed SVG flags (flag-icons via jsDelivr) resolved from the
+// change, full-bleed SVG flags (flag-icons, served from this theme's flags/) resolved from the
 // emoji value, and a quick fade/slide name swap when the server flags
 // `animate: true` (roster import).
 //
@@ -16,7 +16,11 @@
   const slot = window.__SLOT || null;
   const field = window.__FIELD || null;
 
-  const FLAG_CDN = 'https://cdn.jsdelivr.net/gh/lipis/flag-icons@7.2.3/flags/4x3/';
+  // Flags are files in this theme's flags/ folder (flag-icons 7.2.3, 4x3, MIT), found
+  // relative to this script so the theme folder can be moved or renamed.
+  const FLAG_BASE = (() => {
+    try { return new URL('flags/', document.currentScript.src).href; } catch { return '../flags/'; }
+  })();
 
   // Name row: shrink a single line down to WRAP_AT; if it still doesn't fit,
   // wrap to two lines at WRAP_SIZE and shrink from there as a last resort.
@@ -143,19 +147,36 @@
   };
 
   // Flag value → image src. Handles raw ISO-3166 alpha-2 codes and regional-
-  // indicator emoji pairs (both → flag-icons CDN), plus the specialty flags
+  // indicator emoji pairs (both → a file in flags/), plus the specialty flags
   // above. Null when the value is none of those.
   function flagSrc(value) {
     const s = String(value ?? '').trim();
     if (!s) return null;
-    if (/^[A-Za-z]{2}$/.test(s)) return FLAG_CDN + s.toLowerCase() + '.svg';
+    if (/^[A-Za-z]{2}$/.test(s)) return FLAG_BASE + s.toLowerCase() + '.svg';
     const special = SPECIALTY_FLAGS[s.split(String.fromCodePoint(0xFE0F)).join('')];
     if (special) return special;
     const cps = Array.from(s).map((c) => c.codePointAt(0));
     if (cps.length === 2 && cps.every((cp) => cp >= 0x1F1E6 && cp <= 0x1F1FF)) {
-      return FLAG_CDN + String.fromCharCode(cps[0] - 0x1F1E6 + 97, cps[1] - 0x1F1E6 + 97) + '.svg';
+      return FLAG_BASE + String.fromCharCode(cps[0] - 0x1F1E6 + 97, cps[1] - 0x1F1E6 + 97) + '.svg';
     }
     return null;
+  }
+
+  // Streamer.bot's HTTP server sends .svg files as application/octet-stream, and a
+  // browser will not draw an <img> from that. So over http the file is fetched as
+  // text and handed to the <img> as a data URI (the same form the specialty flags
+  // use). A page opened from disk (file://) cannot fetch, and does not need to: there
+  // the file's own type is right, so the <img> points straight at it.
+  const flagCache = new Map(); // file url → Promise<data uri | null>
+  function loadFlag(url) {
+    if (location.protocol === 'file:') return Promise.resolve(url);
+    if (!flagCache.has(url)) {
+      flagCache.set(url, fetch(url)
+        .then((r) => (r.ok ? r.text() : null))
+        .then((text) => (text && /<svg[\s>]/i.test(text) ? svgUri(text) : null))
+        .catch(() => null));
+    }
+    return flagCache.get(url);
   }
 
   function renderFlag(state, p) {
@@ -166,18 +187,37 @@
     const src = enabled ? flagSrc(p.fields?.flag) : null;
     if (src === lastFlagSrc) return;
     lastFlagSrc = src;
-    if (src) {
-      img.src = src;
-      cell.classList.remove('hidden');
-    } else {
+
+    const refit = () => {
+      // The name cell just changed width — re-fit its text to the new space.
+      if (lastNameKey !== null) {
+        const row = document.getElementById('name-row');
+        if (row) fitNameRow(row);
+      }
+    };
+    const hide = () => {
       img.removeAttribute('src');
-      cell.classList.add('hidden');
-    }
-    // The name cell just changed width — re-fit its text to the new space.
-    if (lastNameKey !== null) {
-      const row = document.getElementById('name-row');
-      if (row) fitNameRow(row);
-    }
+      delete img.dataset.code;
+      if (!cell.classList.contains('hidden')) { cell.classList.add('hidden'); refit(); }
+    };
+    const show = (uri) => {
+      // data-code names the flag for tests and for anyone inspecting the page.
+      const m = /\/([a-z]{2})\.svg$/.exec(src);
+      if (m) img.dataset.code = m[1]; else img.dataset.code = 'special';
+      img.onerror = () => { if (lastFlagSrc === src) hide(); }; // a file that is not a picture
+      img.src = uri;
+      if (cell.classList.contains('hidden')) { cell.classList.remove('hidden'); refit(); }
+    };
+
+    if (!src) return hide();
+    if (src.startsWith('data:')) return show(src);
+    // The old flag stays up for the few milliseconds the new one takes to arrive. A
+    // code with no file (a typo such as "zz") hides the cell instead of leaving an
+    // empty plate.
+    loadFlag(src).then((uri) => {
+      if (lastFlagSrc !== src) return; // a newer flag was asked for meanwhile
+      if (uri) show(uri); else hide();
+    });
   }
 
   function renderNameRow(state, p) {

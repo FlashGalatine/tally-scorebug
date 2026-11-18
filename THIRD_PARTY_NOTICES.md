@@ -10,14 +10,21 @@ third-party material:
   and the nation table) are vendored from the author's own StreamScoreboard project.
   MIT © Ashe "Flash" Galatine — same license and author as this repository.
 
-## Loaded at runtime from CDNs (not distributed with this repository)
+## Third-party files included in this repository
 
 - **flag-icons** v7.2.3 — <https://github.com/lipis/flag-icons> (MIT © Panayiotis
-  Lipiridis). Country flag SVGs, loaded per-flag from jsDelivr by the Primetime theme
-  and the theming-tutorial snippets.
-- **Quantico** typeface — loaded via Google Fonts by the Primetime theme. SIL Open Font
-  License 1.1.
-- **jsDelivr** — CDN serving the flag SVGs (<https://www.jsdelivr.com/terms>).
+  Lipiridis). The 257 two-letter country flags (4x3 SVG), unmodified, in
+  `tally-themes/primetime/flags/`. Licence text: `tally-themes/primetime/flags/LICENSE.txt`.
+- **Quantico** typeface — © 2011 Matthew Desmond, SIL Open Font License 1.1. The Latin
+  400 and 700 weights as WOFF2, from the `@fontsource/quantico` 5.3.0 package, in
+  `tally-themes/primetime/fonts/`. Licence text: `tally-themes/primetime/fonts/OFL.txt`.
+
+The Primetime theme loads nothing from the internet.
+
+## Loaded at runtime from CDNs (not distributed with this repository)
+
+- The example theme in [docs/THEMING.md](docs/THEMING.md) loads flag SVGs per flag from
+  jsDelivr (<https://www.jsdelivr.com/terms>). That is the tutorial snippet only.
 
 ## Development dependencies (npm)
 

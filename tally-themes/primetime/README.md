@@ -32,8 +32,10 @@ Inside each strip the name plate flexes: when the flag is toggled off (or empty)
 
 ## Network dependencies
 
-- Google Fonts (Quantico 400/700) — loaded via `@import` in `theme.css`.
-- [flag-icons](https://github.com/lipis/flag-icons) v7.2.3 (MIT) — flag SVGs loaded per-country from jsDelivr by the strip panels.
+None. The theme works with no internet.
+
+- Quantico 400/700 (SIL OFL 1.1) is in `fonts/` and loaded by `@font-face` in `theme.css`.
+- [flag-icons](https://github.com/lipis/flag-icons) v7.2.3 (MIT) is in `flags/`, one SVG per two-letter country code. The strip panels fetch the file and show it as a data URI, because Streamer.bot's HTTP server sends `.svg` as `application/octet-stream`, which an `<img>` will not draw.
 
 Both can be self-hosted for fully offline use.
 

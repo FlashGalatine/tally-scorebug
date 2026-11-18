@@ -179,23 +179,23 @@ async function main() {
       JSON.stringify(doActions[0]?.args));
 
     // One Set applies name + flag: the strip shows the name AND maps the emoji to
-    // the flag-icons jp.svg in its flag cell.
+    // the flag-icons jp.svg, from the theme's own flags/ folder, in its flag cell.
     const nameEcho = await stripPage.waitForFunction(
       () => document.getElementById('pname').textContent.trim() === 'Vamp Fatale', { timeout: 6000 }).then(() => true).catch(() => false);
     check('typing a name in the control panel updates the strip (no chat)', nameEcho, await stripPage.evaluate(() => document.getElementById('pname').textContent));
     const flagShown = await stripPage.waitForFunction(() => {
       const img = document.getElementById('flag');
       const cell = document.getElementById('flag-cell');
-      return img && (img.getAttribute('src') || '').includes('/jp.svg') && cell && !cell.classList.contains('hidden');
+      return img && img.dataset.code === 'jp' && img.naturalWidth > 0 && cell && !cell.classList.contains('hidden');
     }, { timeout: 6000 }).then(() => true).catch(() => false);
     check('strip flag cell shows the autofilled flag (jp.svg)', flagShown,
-      await stripPage.evaluate(() => (document.getElementById('flag') || {}).src || '(no img)'));
+      await stripPage.evaluate(() => { const i = document.getElementById('flag'); return i ? (i.dataset.code + ' w=' + i.naturalWidth) : '(no img)'; }));
 
     // Override: type a nation alias over the autofill and Set just the flag.
     await ctrlPage.fill('#p1flag', 'uk');
     await ctrlPage.click('button[data-set="p1flag"]');
     const flagOverride = await stripPage.waitForFunction(
-      () => ((document.getElementById('flag') || {}).getAttribute('src') || '').includes('/gb.svg'),
+      () => { const i = document.getElementById('flag'); return !!i && i.dataset.code === 'gb' && i.naturalWidth > 0; },
       { timeout: 6000 }).then(() => true).catch(() => false);
     check("flag override: 'uk' alias → gb.svg on the strip", flagOverride,
       await stripPage.evaluate(() => (document.getElementById('flag') || {}).src || '(no img)'));
@@ -302,6 +302,7 @@ async function main() {
     await verifyFlagBox(browser);
     await verifySendQueue(browser);
     await verifyImport(browser);
+    await verifyOffline(browser);
 
     await stripPage.screenshot({ path: resolve(__dirname, 'test-render.png') });
     await ctrlPage.screenshot({ path: resolve(__dirname, 'control-render.png') });
@@ -770,6 +771,63 @@ async function verifyImport(browser) {
   check('the Import button is usable again afterwards', !await p.isDisabled('#importRoster'));
   check('import flow raises no browser script errors', errors.length === 0, errors.join('; '));
   await p.close();
+}
+
+// Sprint 7: the panels need nothing from the internet (TAL-19).
+async function verifyOffline(browser) {
+  console.log('\n  panels with no internet');
+  const JP = '\u{1F1EF}\u{1F1F5}';
+  await fetch(`${BASE}/mock/cmd?command=teams&value=2`);
+  await fetch(`${BASE}/mock/cmd?command=setmany&p1name=Offline%20One&p1flag=jp&header=Offline%20Cup&subheader=FT2`);
+  const ctx = await browser.newContext({ viewport: { width: 545, height: 63 }, deviceScaleFactor: 2 });
+  const outside = [];
+  // Refuse everything that is not this machine, and remember what was asked for.
+  await ctx.route('**/*', (route) => {
+    const u = new URL(route.request().url());
+    if (u.hostname === '127.0.0.1' || u.protocol === 'data:') return route.continue();
+    outside.push(u.href);
+    return route.abort();
+  });
+  const strip = await ctx.newPage();
+  const errors = [];
+  strip.on('pageerror', (err) => errors.push(err.message));
+  await strip.goto(`${BASE}/tally-themes/primetime/panels/player1-strip-545x63.html?sbport=${WS_PORT}`, { waitUntil: 'load' });
+  const drew = await strip.waitForFunction(() => {
+    const i = document.getElementById('flag');
+    return i && i.dataset.code === 'jp' && i.naturalWidth > 0 && !document.getElementById('flag-cell').classList.contains('hidden');
+  }, null, { timeout: 6000 }).then(() => true).catch(() => false);
+  check('the flag draws from the theme\u2019s own folder', drew,
+    await strip.evaluate(() => { const i = document.getElementById('flag'); return i ? (i.dataset.code + ' w=' + i.naturalWidth) : '(no img)'; }));
+  const fontOk = await strip.evaluate(async () => { await document.fonts.ready; await document.fonts.load('700 20px Quantico'); return document.fonts.check('700 20px Quantico') && document.fonts.check('400 20px Quantico'); });
+  check('Quantico (400 and 700) loads from the theme\u2019s own folder', fontOk);
+  const used = await strip.evaluate(() => getComputedStyle(document.getElementById('pname')).fontFamily);
+  check('the name is set in Quantico', /Quantico/.test(used), used);
+
+  // Why the theme fetches the file: Streamer.bot (and so the mock) serves .svg as
+  // application/octet-stream, which a plain <img> will not draw.
+  const type = (await fetch(`${BASE}/tally-themes/primetime/flags/jp.svg`)).headers.get('content-type');
+  const plain = await strip.evaluate((url) => new Promise((res) => {
+    const i = new Image(); i.onload = () => res(i.naturalWidth); i.onerror = () => res(0); i.src = url;
+  }), `${BASE}/tally-themes/primetime/flags/jp.svg`);
+  check('the mock serves .svg as Streamer.bot does (application/octet-stream), which a plain <img> cannot draw',
+    type === 'application/octet-stream' && plain === 0, type + ' / naturalWidth ' + plain);
+
+  // A code with no file hides the cell instead of leaving an empty plate.
+  await fetch(`${BASE}/mock/cmd?command=p1flag&value=zz`);
+  check('a two-letter code with no flag file hides the flag cell',
+    await strip.waitForFunction(() => document.getElementById('flag-cell').classList.contains('hidden'), null, { timeout: 4000 }).then(() => true).catch(() => false));
+  await fetch(`${BASE}/mock/cmd?command=p1flag&value=gb`);
+  check('…and a real code brings it back',
+    await strip.waitForFunction(() => { const i = document.getElementById('flag'); return i.dataset.code === 'gb' && i.naturalWidth > 0 && !document.getElementById('flag-cell').classList.contains('hidden'); }, null, { timeout: 4000 }).then(() => true).catch(() => false));
+
+  const title = await ctx.newPage();
+  await title.goto(`${BASE}/tally-themes/primetime/panels/title-309x49.html?sbport=${WS_PORT}`, { waitUntil: 'load' });
+  await title.waitForFunction(() => document.getElementById('header').textContent.trim() === 'Offline Cup');
+  await title.evaluate(() => document.fonts.ready);
+  check('no panel asked for anything outside this machine', outside.length === 0, outside.slice(0, 3).join(', '));
+  check('offline panels raise no browser script errors', errors.length === 0, errors.join('; '));
+  await fetch(`${BASE}/mock/cmd?command=p1flag&value=none`);
+  await ctx.close();
 }
 
 main();

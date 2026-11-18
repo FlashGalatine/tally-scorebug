@@ -311,6 +311,10 @@ the difference; that's the point of the mock.
 - Webfonts via `@import`/`<link>` (Google Fonts) work fine; if the machine is offline
   they fall back to system fonts — design so that's acceptable. If your theme re-measures
   text (auto-fit), re-run the fit on `document.fonts.ready` like Primetime does.
-- Flag SVGs come from the flag-icons CDN (jsDelivr) — they need network. If you want a
-  fully-offline theme, render the flag *emoji* as text instead (Windows shows letter
-  pairs; macOS/Linux show real flags) or vendor the handful of SVGs you need.
+- The snippet above loads flag SVGs from the flag-icons CDN (jsDelivr), which needs
+  network. For a fully-offline theme, copy what Primetime does: it ships the SVGs in its
+  own `flags/` folder. One trap: Streamer.bot's HTTP server sends `.svg` files as
+  `application/octet-stream`, and an `<img>` will not draw that. Primetime fetches the
+  file as text and sets the `<img>` to a `data:image/svg+xml,` URI (see `loadFlag` in
+  `tally-themes/primetime/theme.js`). Fonts are not affected; `@font-face` works with any
+  content type.

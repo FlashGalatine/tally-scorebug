@@ -10,6 +10,27 @@ traceability.
 
 ## [Unreleased]
 
+### Changed
+
+- **The Primetime panels need no internet.** The Quantico font and the country flags are
+  now files in the theme folder (`fonts/`, `flags/`) instead of being loaded from Google
+  Fonts and jsDelivr on every page load. On a venue network with no internet the flags
+  used to be empty cells and the font fell back; both now work, and no third party is
+  contacted. Flags: flag-icons 7.2.3 (MIT), the 257 two-letter codes. Font: Quantico 400
+  and 700 (SIL OFL 1.1). Licence texts are beside the files. The repository grows by
+  about 2.2 MB.
+- **Flags are fetched and embedded.** Streamer.bot's HTTP server sends `.svg` files as
+  `application/octet-stream`, which a browser will not draw as an image, so the theme
+  fetches each flag once and gives the image a data URI. A panel opened straight from
+  disk points at the file directly.
+
+### Fixed
+
+- **A flag code with no picture hides the flag cell** instead of leaving an empty plate
+  (for example a mistyped two-letter code).
+
+Copy `tally-themes` (it now includes `flags/` and `fonts/`) and refresh the OBS sources.
+
 ## [1.0.28] — 2026-11-18
 
 ### Fixed

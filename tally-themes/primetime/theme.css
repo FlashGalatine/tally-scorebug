@@ -5,7 +5,16 @@
    Title: trapezoid, NW/NE interior 55° (wide top, narrow bottom)
    ═══════════════════════════════════════════════════════════════════ */
 
-@import url('https://fonts.googleapis.com/css2?family=Quantico:wght@400;700&display=swap');
+/* Quantico is served from this folder (fonts/), not from Google Fonts, so the panels
+   look the same with no internet. SIL Open Font License 1.1 — see fonts/OFL.txt. */
+@font-face {
+  font-family: 'Quantico'; font-style: normal; font-weight: 400; font-display: swap;
+  src: url('fonts/quantico-latin-400-normal.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'Quantico'; font-style: normal; font-weight: 700; font-display: swap;
+  src: url('fonts/quantico-latin-700-normal.woff2') format('woff2');
+}
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
