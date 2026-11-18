@@ -92,6 +92,49 @@ async function runShim() {
   return { next };
 }
 
+// A bare Streamer.bot WebSocket client: request() resolves with the reply to a
+// DoAction, nextUpdate() with the next scoreboard:update broadcast not yet consumed.
+async function rawClient() {
+  const ws = new WebSocket(`ws://127.0.0.1:${WS_PORT}/`);
+  await new Promise((res, rej) => { ws.on('open', res); ws.on('error', rej); });
+  const replies = new Map(), waiters = new Map(), updates = [];
+  let seq = 0, taken = 0, updWaiter = null;
+  ws.on('message', (raw) => {
+    let m; try { m = JSON.parse(raw.toString()); } catch { return; }
+    if (m.id && !m.event) { const w = waiters.get(m.id); if (w) { waiters.delete(m.id); w(m); } else replies.set(m.id, m); return; }
+    if (m.event && m.event.source === 'General' && m.event.type === 'Custom' && m.data && m.data.type === 'scoreboard:update') {
+      updates.push(m.data);
+      if (updWaiter) { const w = updWaiter; updWaiter = null; w(); }
+    }
+  });
+  const frame = (name, args) => { const id = 'r' + (++seq); return { id, text: JSON.stringify({ request: 'DoAction', id, action: { name }, args }) }; };
+  const reply = (id, ms = 3000) => new Promise((res, rej) => {
+    if (replies.has(id)) return res(replies.get(id));
+    const t = setTimeout(() => { waiters.delete(id); rej(new Error('no reply to ' + id)); }, ms);
+    waiters.set(id, (m) => { clearTimeout(t); res(m); });
+  });
+  const c = {
+    ws, frame, reply,
+    request(name, args) { const f = frame(name, args); ws.send(f.text); return reply(f.id); },
+    async nextUpdate(ms = 3000) {
+      const until = Date.now() + ms;
+      while (taken >= updates.length) {
+        const left = until - Date.now();
+        if (left <= 0) throw new Error('timeout waiting for a scoreboard:update');
+        await new Promise((res) => { updWaiter = res; setTimeout(res, left); });
+      }
+      return updates[taken++];
+    },
+    clear() { taken = updates.length; },
+    pending() { return updates.length - taken; },
+    close() { ws.close(); },
+  };
+  const sub = 's' + (++seq);
+  ws.send(JSON.stringify({ request: 'Subscribe', id: sub, events: { general: ['Custom'] } }));
+  await reply(sub);
+  return c;
+}
+
 async function main() {
   console.log('Lite Scoreboard — Streamer.bot seam verification\n');
   let mock;
@@ -103,7 +146,7 @@ async function main() {
     console.log('[1] transport: tally-shared/panel-core.js (SB shim) against the mock WS');
     const { next } = await runShim();
     const sync = await next();
-    check('scoreboard:update dispatched on connect (DoAction sync)', !!sync);
+    check('scoreboard:update dispatched on connect (DoAction sync)', sync?.fullPayload?.type === 'scoreboard:update', JSON.stringify(sync?.fullPayload?.type));
     check('player1 name/score mapped from state', sync?.player1?.name === 'Player 1' && sync?.player1?.score === 0, JSON.stringify(sync?.player1));
     check('player2 name/score mapped from state', sync?.player2?.name === 'Player 2' && sync?.player2?.score === 0, JSON.stringify(sync?.player2));
     check('header carried through', sync?.header === 'Streamer.bot Lite', sync?.header);
@@ -211,6 +254,92 @@ async function main() {
       && many2?.player2?.fields?.flag === undefined && many2?.header === 'HEADER',
       JSON.stringify({ p1: many2?.player1, p2: many2?.player2 }));
     ctrl.close();
+
+    // ── 2d. The mock behaves like Streamer.bot (measured on 1.0.7, see mock header) ─
+    console.log('\n[2d] mock fidelity: replies, rejected commands, C# parsing, arg-bleed mode');
+    const raw = await rawClient();
+    const other = await rawClient();
+    const CMD = 'Scoreboard Command';
+    // The mock's own counters: how many action runs and broadcasts it has done, and
+    // its state. run() sends requests and waits until the mock has run them all, so
+    // nothing here depends on the order broadcasts arrive in.
+    const stats = async () => (await fetch(`${BASE}/mock/stats`)).json();
+    async function run(...frames) { // frames: [client, actionName, args]
+      const before = await stats();
+      const sent = frames.map(([c, name, args]) => { const f = c.frame(name, args); c.ws.send(f.text); return [c, f.id]; });
+      const replies = [];
+      for (const [c, id] of sent) replies.push(await c.reply(id));
+      const until = Date.now() + 3000;
+      let now = await stats();
+      while (now.totalRuns < before.totalRuns + frames.length && Date.now() < until) { await new Promise((r) => setTimeout(r, 10)); now = await stats(); }
+      return { replies, state: now.state, runs: now.totalRuns - before.totalRuns, broadcasts: now.totalBroadcasts - before.totalBroadcasts, log: now.runs };
+    }
+
+    const miss = await raw.request('No Such Action', {});
+    check("unknown action → error reply \"was not found\"", miss.status === 'error' && /was not found/.test(miss.error || ''), JSON.stringify(miss));
+    const trimmed = await run([raw, CMD, { command: 'header', value: '  Trimmed  ' }]);
+    const okReply = trimmed.replies[0];
+    check('known action → ok reply echoing its args and naming the queue',
+      okReply.status === 'ok' && okReply.args?.command === 'header' && okReply.args?.queueName === 'Mock Blocking' && !!okReply.args?.actionQueuedAt,
+      JSON.stringify(okReply));
+    check('a single-field value is trimmed, as the C# does', trimmed.state.header === 'Trimmed', JSON.stringify(trimmed.state.header));
+
+    other.clear();
+    await raw.request('Scoreboard Push', { reason: 'fidelity' });
+    check('Scoreboard Push reaches every subscriber, not only the requester',
+      await other.nextUpdate(1500).then((u) => u.header === 'Trimmed', () => false));
+
+    // Rejected commands return before the push in the C#: three runs, no broadcast.
+    const rejected = await run(
+      [raw, CMD, { command: 'p1flag', value: 'florpland' }],
+      [raw, CMD, { command: 'bogus' }],
+      [raw, CMD, { command: 'setmany' }]);
+    check('rejected commands (bad nation, unknown, empty setmany) run but broadcast nothing',
+      rejected.runs === 3 && rejected.broadcasts === 0, JSON.stringify({ runs: rejected.runs, broadcasts: rejected.broadcasts }));
+
+    // Numbers parse as C# int.TryParse does, not as JS parseInt.
+    const score = async (v) => (await run([raw, CMD, { command: 'p1score', value: v }])).state.p1score;
+    check("p1score '7' → 7", await score('7') === 7);
+    check("p1score ' 8 ' → 8 (surrounding spaces)", await score(' 8 ') === 8);
+    check("p1score '5.5' → 0 (C# rejects it; JS parseInt would say 5)", await score('5.5') === 0);
+    await score('7');
+    check("p1score '12abc' → 0 (JS parseInt would say 12)", await score('12abc') === 0);
+    check("p1score '100' → clamped to 99", await score('100') === 99);
+    check("p1score '-3' → clamped to 0", await score('-3') === 0);
+    await run([raw, CMD, { command: 'teams', value: '3' }]);
+    check("teams 'four' → falls back to 2, as the C# does today", (await run([raw, CMD, { command: 'teams', value: 'four' }])).state.teams === 2);
+
+    // The calling styles the C# accepts.
+    check("chat style A: command '!p1+' → score +1", (await run([raw, CMD, { command: '!p1+' }])).state.p1score === 1);
+    check('chat style A: rawInput is the value', (await run([raw, CMD, { command: '!p2name', rawInput: '  Raw Name ' }])).state.p2name === 'Raw Name');
+    check("chat style B: '!sb p1name …' dispatches on the first input word",
+      (await run([raw, CMD, { command: '!sb', input0: 'p1name', rawInput: 'p1name Dispatch Name' }])).state.p1name === 'Dispatch Name');
+    check('an explicit value argument wins over rawInput', (await run([raw, CMD, { command: 'p1name', value: 'Explicit', rawInput: 'ignored' }])).state.p1name === 'Explicit');
+
+    // Arg-bleed mode: what SB's default queue does to same-action requests that arrive
+    // together. Both runs see the LATER request's arguments, so the first command is lost.
+    const reset1 = () => run([raw, CMD, { command: 'p1score', value: '1' }]).then(() => run([raw, CMD, { command: 'p2score', value: '1' }]));
+    const burst = (a, b) => run([a, CMD, { command: 'p1score', value: '4' }], [b, CMD, { command: 'p2score', value: '6' }]);
+    await reset1();
+    const calm = await burst(raw, raw);
+    check('bleed off (blocking queue): two back-to-back commands both apply',
+      calm.state.p1score === 4 && calm.state.p2score === 6, JSON.stringify({ p1: calm.state.p1score, p2: calm.state.p2score }));
+    await fetch(`${BASE}/mock/bleed?on=1`);
+    await reset1();
+    const bledSame = await burst(raw, raw);
+    check('bleed on, one socket: both runs use the later arguments (first command lost)',
+      bledSame.state.p1score === 1 && bledSame.state.p2score === 6 && bledSame.replies[0].args?.queueName === 'Default',
+      JSON.stringify({ p1: bledSame.state.p1score, p2: bledSame.state.p2score, q: bledSame.replies[0].args?.queueName }));
+    check('the mock logs both of those runs as bled, with the later token',
+      bledSame.log.slice(-2).every((r) => r.bled && r.token === 'p2score'), JSON.stringify(bledSame.log.slice(-2)));
+    await reset1();
+    const bledCross = await burst(raw, other);
+    check('bleed on, two sockets: the same loss', bledCross.state.p1score === 1 && bledCross.state.p2score === 6,
+      JSON.stringify({ p1: bledCross.state.p1score, p2: bledCross.state.p2score }));
+    await fetch(`${BASE}/mock/bleed?on=0`);
+    const badPath = await fetch(`${BASE}/%E0%A4%A`);
+    check('a malformed percent-escape in a path gets a 400, and the mock stays up', badPath.status === 400 && (await fetch(`${BASE}/mock/stats`)).status === 200);
+    raw.close(); other.close();
 
     // ── 3. HTTP: SB-style serving of the shim + untouched themes ───────────────
     console.log('\n[3] HTTP: SB-style Path->Folder serving');

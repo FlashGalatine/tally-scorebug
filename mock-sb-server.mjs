@@ -8,9 +8,13 @@
 //       /mock/cmd?command=..   -> applies a mutation + re-broadcasts (the Stream Deck
 //                                 analog: a button/chat hitting one control surface)
 //       /                      -> a panel index for quick manual testing
-//   • WebSocket Server on :8080 — speaks SB's envelope. On `Subscribe` it acks; on
-//     `DoAction` it acks AND broadcasts current state (mimicking the C# "Scoreboard
-//     Push" action), which is what recreates the server's sync-on-connect.
+//   • WebSocket Server on :8080 — speaks SB's envelope. On `Subscribe` it acks. On
+//     `DoAction` it replies the way Streamer.bot 1.0.7 was measured to (see the
+//     DoAction handler), then runs a mirror of the named C# action: "Scoreboard Push"
+//     broadcasts the state to every subscriber, "Scoreboard Command" changes it and
+//     then pushes. Any other action name gets SB's "was not found" error reply.
+//     /mock/bleed?on=1 makes same-action requests that arrive together run with one
+//     request's arguments, as they do in SB's default (non-blocking) queue.
 //
 // Interactive keys (when attached to a TTY): q/a = P1 +/-, w/s = P2 +/-, r reset,
 // x swap — each re-broadcasts a live scoreboard:update, proving the live path.
@@ -58,17 +62,57 @@ const state = {
 // control panel applies name + flag in ONE DoAction (SB 1.0.4 arg-bleeds bursts).
 // `extra` is the full args object — `setmany` reads its per-field sibling args
 // (pNname/pNflag/header/subheader) from it, one batched DoAction for many fields.
-function applyCommand(command, value, flag, extra) {
-  const cmd = String(command || '').trim().toLowerCase();
-  const val = value == null ? '' : String(value);
-  const clamp = (n, lo = 0, hi = 99) => Math.max(lo, Math.min(hi, Math.trunc(n) || 0));
+const KNOWN = new Set(['reset', 'swap', 'teams', 'header', 'subheader', 'setmany']);
+for (let i = 1; i <= 4; i++) for (const op of ['+', '-', 'score', 'name', 'flag']) KNOWN.add('p' + i + op);
+
+// C# int.TryParse(s, NumberStyles.Integer, InvariantCulture): optional sign, digits
+// only, surrounding white space allowed, must fit an Int32. Anything else fails and
+// the caller's default applies. JS parseInt is NOT this ('5.5' → 5, '12abc' → 12).
+function parseIntCs(s, dflt) {
+  const t = String(s == null ? '' : s).trim();
+  if (!/^[+-]?\d+$/.test(t)) return dflt;
+  const n = Number(t);
+  return n >= -2147483648 && n <= 2147483647 ? n : dflt;
+}
+
+// Mirror of the token/value resolution at the top of Execute() in
+// scoreboard-command.cs, including the two chat styles (a command per action, or one
+// dispatch command with the token as the first input word).
+function resolveCommand(args) {
+  const a = args || {};
+  const str = (v) => (v == null ? null : String(v));
+  let cmdArg = (str(a.command) || '').trim();
+  while (cmdArg.length && !/[\p{L}\p{Nd}]/u.test(cmdArg[0])) cmdArg = cmdArg.slice(1);
+  const sp = cmdArg.indexOf(' ');
+  let token = (sp >= 0 ? cmdArg.slice(0, sp) : cmdArg).toLowerCase();
+  const cmdRest = sp >= 0 ? cmdArg.slice(sp + 1).trim() : '';
+  let value = (str(a.value) ?? str(a.rawInput) ?? cmdRest ?? '').trim();
+  if (!KNOWN.has(token)) {
+    const in0 = (str(a.input0) || '').trim().toLowerCase();
+    if (KNOWN.has(in0)) {
+      token = in0;
+      const ri = (str(a.rawInput) || '').trim();
+      const s2 = ri.indexOf(' ');
+      value = (s2 >= 0 ? ri.slice(s2 + 1) : '').trim();
+    }
+  }
+  return { token, value };
+}
+
+// Returns true when the C# would go on to run "Scoreboard Push", false when it
+// returns early (unknown command, unknown nation, empty setmany): no push then.
+function applyCommand(args) {
+  const { token: cmd, value: val } = resolveCommand(args);
+  const flag = args && args.flag;
+  const extra = args;
+  const clamp = (n, lo = 0, hi = 99) => Math.max(lo, Math.min(hi, n));
   const pn = /^p([1-4])(\+|-|score|name|flag)$/.exec(cmd);
   if (pn) {
     const [, n, op] = pn;
     switch (op) {
       case '+': state['p' + n + 'score'] = clamp(state['p' + n + 'score'] + 1); break;
       case '-': state['p' + n + 'score'] = clamp(state['p' + n + 'score'] - 1); break;
-      case 'score': state['p' + n + 'score'] = clamp(parseInt(val, 10)); break;
+      case 'score': state['p' + n + 'score'] = clamp(parseIntCs(val, 0)); break;
       case 'name': {
         state['p' + n + 'name'] = val;
         // A bad flag only warns in the C# — the name still applies.
@@ -87,7 +131,7 @@ function applyCommand(command, value, flag, extra) {
       const f = state.p1flag; state.p1flag = state.p2flag; state.p2flag = f;
       break;
     }
-    case 'teams': state.teams = clamp(parseInt(val, 10) || 2, 2, 4); break;
+    case 'teams': state.teams = clamp(parseIntCs(val, 2), 2, 4); break;
     case 'header': state.header = val; break;
     case 'subheader': state.subheader = val; break;
     case 'setmany': { // mirror of the C# SetMany(): apply every present field, bad flags skip
@@ -185,14 +229,29 @@ ${sections.join('\n')}`;
 // ── HTTP server (SB HTTP Server mimic) ───────────────────────────────────────
 const http = createServer(async (req, res) => {
   const url = req.url || '/';
-  const path = decodeURIComponent(url.split('?')[0]);
+  let path;
+  try { path = decodeURIComponent(url.split('?')[0]); }
+  catch { res.writeHead(400, { 'content-type': 'text/plain' }); res.end('bad path'); return; }
   const query = new URLSearchParams(url.split('?')[1] || '');
 
   if (path === '/mock/cmd') {
-    const ok = applyCommand(query.get('command'), query.get('value'), query.get('flag'), Object.fromEntries(query));
+    const ok = applyCommand(Object.fromEntries(query));
     if (ok) broadcast();
     res.writeHead(ok ? 200 : 400, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ ok, state }));
+    return;
+  }
+  // Test controls. /mock/bleed?on=1|0 switches the arg-bleed mode (see runAction);
+  // /mock/stats reports what the mock has seen.
+  if (path === '/mock/bleed') {
+    if (query.has('on')) argBleed = query.get('on') === '1';
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ argBleed }));
+    return;
+  }
+  if (path === '/mock/stats') {
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ argBleed, totalRuns, totalBroadcasts, runs: runLog.slice(-50), state }));
     return;
   }
   if (path === '/' || path === '/index.html') {
@@ -240,20 +299,72 @@ wss.on('connection', (ws) => {
       console.log('[mock] Subscribe', ws.subscribedCustom ? 'OK (general.Custom)' : 'IGNORED (expected lowercase events.general:["Custom"])');
       ws.send(JSON.stringify({ id: m.id, status: 'ok', result: { events: m.events } }));
     } else if (m.request === 'DoAction') {
-      ws.send(JSON.stringify({ id: m.id, status: 'ok' }));
       const name = m.action && m.action.name;
-      if (name === 'Scoreboard Command' && m.args && applyCommand(m.args.command, m.args.value, m.args.flag, m.args)) {
-        broadcast(); // mutate + notify all overlays (mimics Scoreboard Command → Scoreboard Push)
-      } else if (ws.subscribedCustom) {
-        ws.send(stateMessage()); // Scoreboard Push / sync-on-connect re-broadcast
+      // Measured on Streamer.bot 1.0.7: an action that does not exist gets an error
+      // reply; one that exists gets "ok" AT ONCE, when it is queued (not when it has
+      // run), echoing the request's own args plus the queue it was put in.
+      if (!ACTIONS.has(name)) {
+        ws.send(JSON.stringify({ id: m.id, status: 'error', error: `The action '${name}' was not found` }));
+        return;
       }
+      const args = (m.args && typeof m.args === 'object') ? m.args : {};
+      ws.send(JSON.stringify({
+        id: m.id, status: 'ok',
+        args: { ...args, actionName: name, queueName: argBleed ? 'Default' : 'Mock Blocking', actionQueuedAt: new Date().toISOString() },
+      }));
+      queueAction(name, args);
     }
   });
   ws.on('close', () => clients.delete(ws));
 });
 wss.on('listening', () => console.log(`[mock] WS    ws://127.0.0.1:${WS_PORT}  (Streamer.bot mock)`));
 
+// ── Action runs ──────────────────────────────────────────────────────────────
+// Default (argBleed off) behaves like actions in a BLOCKING queue: one run at a time,
+// in arrival order, each with its own args.
+//
+// argBleed on behaves like Streamer.bot's DEFAULT queue as measured on 1.0.7: runs of
+// one action that overlap all see ONE request's arguments (the later one, in 25 of 25
+// same-client tries). The mock holds each request for BLEED_WINDOW_MS and then runs
+// every request for that action that arrived in the window with the LAST one's args.
+// Turn it on with MOCK_ARG_BLEED=1 or GET /mock/bleed?on=1.
+const ACTIONS = new Set(['Scoreboard Command', 'Scoreboard Push']);
+const BLEED_WINDOW_MS = 15;
+let argBleed = process.env.MOCK_ARG_BLEED === '1';
+const pendingByAction = new Map(); // name → [{ args }]
+const runLog = [];                 // [{ action, token, bled }] newest last
+let totalRuns = 0, totalBroadcasts = 0;
+
+function runAction(name, args, bled) {
+  totalRuns++;
+  if (name === 'Scoreboard Command') {
+    runLog.push({ action: name, token: resolveCommand(args).token, bled: !!bled });
+    // The C# returns false before the push on a rejected command: no broadcast at all.
+    if (applyCommand(args)) broadcast();
+  } else {
+    runLog.push({ action: name, bled: !!bled });
+    broadcast(); // "Scoreboard Push" uses WebsocketBroadcastJson: every subscriber gets it
+  }
+  if (runLog.length > 500) runLog.splice(0, runLog.length - 500);
+}
+
+function queueAction(name, args) {
+  if (!argBleed) { runAction(name, args, false); return; }
+  let pending = pendingByAction.get(name);
+  if (!pending) {
+    pending = [];
+    pendingByAction.set(name, pending);
+    setTimeout(() => {
+      pendingByAction.delete(name);
+      const last = pending[pending.length - 1].args;
+      for (let i = 0; i < pending.length; i++) runAction(name, last, pending.length > 1);
+    }, BLEED_WINDOW_MS);
+  }
+  pending.push({ args });
+}
+
 function broadcast() {
+  totalBroadcasts++;
   const msg = stateMessage();
   for (const ws of clients) { if (ws.subscribedCustom) { try { ws.send(msg); } catch {} } }
   console.log(`[mock] broadcast  ${state.p1name} ${state.p1score} - ${state.p2score} ${state.p2name}`);
@@ -269,7 +380,6 @@ if (process.stdin.isTTY && typeof process.stdin.setRawMode === 'function') {
     if (k.charCodeAt(0) === 3) process.exit(0); // Ctrl+C
     const map = { q: 'p1+', a: 'p1-', w: 'p2+', s: 'p2-', r: 'reset', x: 'swap' };
     if (!map[k]) return;
-    applyCommand(map[k]);
-    broadcast();
+    if (applyCommand({ command: map[k] })) broadcast();
   });
 }

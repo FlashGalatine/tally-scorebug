@@ -8,11 +8,14 @@
 // synced values paint, drives live changes (name/score/flag via /mock/cmd and the
 // control panel), asserts the panels update, and writes test-render.png /
 // control-render.png (gitignored).
+//
+// It never writes tally-shared/roster.json: the sample rosters are served to the page
+// by intercepting the request, so an operator's imported roster is left alone even
+// if this run is interrupted.
 
 import { spawn } from 'node:child_process';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { readFile, writeFile, rm } from 'node:fs/promises';
 import { chromium } from 'playwright-core';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -51,9 +54,6 @@ async function launch() {
 async function main() {
   console.log('Scorebug — real-pixel render verification (Primetime)\n');
   let mock, browser;
-  const rosterPath = resolve(__dirname, 'tally-shared', 'roster.json');
-  let savedRoster;
-  try { savedRoster = await readFile(rosterPath); } catch (err) { if (err.code !== 'ENOENT') throw err; }
   try {
     mock = await startMock();
     console.log(`mock SB up (:${HTTP_PORT} HTTP, :${WS_PORT} WS)\n`);
@@ -99,7 +99,7 @@ async function main() {
 
     // ── Control panel: roster autofill + flags, no chat ─────────────────────────
     const JP = '\u{1F1EF}\u{1F1F5}';
-    await writeFile(rosterPath, JSON.stringify({
+    const sampleRoster = {
       tournament: 'sample-cup', platform: 'sample',
       names: ['Blanka-chan', 'The Tyrant', 'Vamp Fatale', 'Wicked Thunder'],
       players: [
@@ -108,8 +108,9 @@ async function main() {
         { name: 'Vamp Fatale', flag: JP },
         { name: 'Wicked Thunder', flag: null },
       ],
-    }));
+    };
     const ctrlPage = await browser.newPage({ viewport: { width: 420, height: 760 } });
+    await ctrlPage.route('**/tally-shared/roster.json', (route) => route.fulfill({ json: sampleRoster }));
     // Tap outbound WebSocket frames before the page's own script runs. The count is
     // the load-bearing assertion below: SB 1.0.4 arg-bleeds two DoActions to the same
     // action within a few ms, so a Set click must produce exactly ONE.
@@ -226,6 +227,24 @@ async function main() {
     check('setmany applied both names (strip shows P1, panel keeps P2)', !!bothLanded,
       await stripPage.evaluate(() => document.getElementById('pname').textContent));
 
+    // The same gesture with the mock's arg-bleed mode ON (Streamer.bot's default,
+    // non-blocking queue): because the click is ONE DoAction there is nothing for the
+    // arguments to mix with, so both names must still land. A regression to two
+    // DoActions would lose the first one here.
+    await fetch(`${BASE}/mock/bleed?on=1`);
+    await ctrlPage.fill('#p1name', 'Bleed One');
+    await ctrlPage.fill('#p2name', 'Bleed Two');
+    await ctrlPage.click('button[data-set="p1name"]');
+    let bleedState = null;
+    for (const until = Date.now() + 4000; Date.now() < until;) {
+      bleedState = (await (await fetch(`${BASE}/mock/stats`)).json()).state;
+      if (bleedState.p1name === 'Bleed One' && bleedState.p2name === 'Bleed Two') break;
+      await ctrlPage.waitForTimeout(25);
+    }
+    await fetch(`${BASE}/mock/bleed?on=0`);
+    check('arg-bleed mode on: one Set click still applies both players',
+      bleedState?.p1name === 'Bleed One' && bleedState?.p2name === 'Bleed Two', JSON.stringify({ p1: bleedState?.p1name, p2: bleedState?.p2name }));
+
     // Browse: an empty name box + ArrowDown lists the whole roster; Escape closes it.
     await ctrlPage.fill('#p2name', '');
     await ctrlPage.keyboard.press('ArrowDown');
@@ -288,8 +307,6 @@ async function main() {
     failed++;
     console.log('\n  ERROR ' + ((err && err.stack) || err));
   } finally {
-    if (savedRoster) await writeFile(rosterPath, savedRoster);
-    else { try { await rm(rosterPath); } catch {} }
     if (browser) { try { await browser.close(); } catch {} }
     if (mock) mock.kill();
   }
@@ -306,14 +323,15 @@ async function verifyOpponentAutofill(browser) {
     { id: '11', name: 'Alpha', flag: '🇯🇵' }, { id: '22', name: 'Beta', flag: '🇺🇸' },
     { id: '33', name: 'Gamma', flag: null },
   ] };
-  let calls = 0, held, release;
+  let calls = 0, answered = 0, held, release;
   let result = { ok: true, status: 'found', opponent: { id: '22', name: 'Beta', flag: '🇺🇸' }, set: { round: 'Winners Final' } };
   await p.route('**/tally-shared/roster.json', route => route.fulfill({ json: fixture }));
   await p.route('http://127.0.0.1:7481/opponent?**', async route => {
     calls++;
     const response = result;
     if (held) { const wait = held; held = null; await wait; }
-    await route.fulfill({ json: response });
+    try { await route.fulfill({ json: response }); } catch { /* the page aborted this lookup */ }
+    answered++;
   });
   await p.addInitScript(() => {
     window.__sent = [];
@@ -327,6 +345,14 @@ async function verifyOpponentAutofill(browser) {
     await p.waitForFunction(() => document.getElementById('rosterInfo').textContent.includes('3 players') && document.getElementById('p1name').value === 'Prior Left');
   }
   const waitFor = fn => p.waitForFunction(fn, null, { timeout: 3000 }).then(() => true).catch(() => false);
+  // After release(): wait until every held lookup has been answered, then give the
+  // page one more turn to act on it. Replaces a fixed 100 ms sleep, which let a late
+  // effect pass unnoticed on a slow machine.
+  async function delivered() {
+    const until = Date.now() + 3000;
+    while (answered < calls && Date.now() < until) await p.waitForTimeout(10);
+    await p.evaluate(() => new Promise((r) => setTimeout(r, 60)));
+  }
   async function waitForCall(before) {
     const until = Date.now() + 3000;
     while (calls === before && Date.now() < until) await p.waitForTimeout(20);
@@ -392,7 +418,7 @@ async function verifyOpponentAutofill(browser) {
   result = { ok: true, status: 'found', opponent: { id: '11', name: 'Alpha', flag: '🇯🇵' } };
   await p.fill('#p1name', 'Beta');
   check('newer player selection wins over a delayed earlier lookup', await waitFor(() => document.getElementById('p2name').value === 'Alpha'));
-  release(); await p.waitForTimeout(100);
+  release(); await delivered();
   check('late lookup cannot replace the newer opponent', await p.inputValue('#p2name') === 'Alpha');
 
   await fresh(); await p.check('#autoOpponent');
@@ -402,7 +428,7 @@ async function verifyOpponentAutofill(browser) {
   await waitForCall(beforeTeams);
   await p.click('button[data-teams="3"]');
   await p.waitForFunction(() => !document.getElementById('card-p3').classList.contains('hide'));
-  release(); await p.waitForTimeout(100);
+  release(); await delivered();
   check('switching to three teams disables autofill and ignores pending lookup', await p.isDisabled('#autoOpponent') && await p.inputValue('#p2name') === 'Prior Right');
   const multiCalls = calls;
   await p.fill('#p1name', 'Alpha'); await p.waitForTimeout(100);
@@ -413,7 +439,7 @@ async function verifyOpponentAutofill(browser) {
   const beforeOff = calls;
   await p.fill('#p1name', 'Gamma');
   await waitForCall(beforeOff);
-  await p.uncheck('#autoOpponent'); release(); await p.waitForTimeout(100);
+  await p.uncheck('#autoOpponent'); release(); await delivered();
   check('disabling autofill ignores a pending lookup', await p.inputValue('#p2name') === 'Prior Right');
 
   await fresh(); await p.check('#autoOpponent');
@@ -421,7 +447,7 @@ async function verifyOpponentAutofill(browser) {
   const beforeSet = calls;
   await p.fill('#p1name', 'Gamma');
   await waitForCall(beforeSet);
-  await p.click('button[data-set="p1name"]'); release(); await p.waitForTimeout(100);
+  await p.click('button[data-set="p1name"]'); release(); await delivered();
   check('Set during lookup prevents late edits and clears the loading status', await p.inputValue('#p2name') === 'Prior Right' &&
     !/Looking up/.test(await p.textContent('#opponentInfo')));
 
