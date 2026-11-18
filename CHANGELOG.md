@@ -10,6 +10,42 @@ traceability.
 
 ## [Unreleased]
 
+### Changed
+
+- **A score or team count that is not a whole number is rejected.** `!sb p1score 1o`,
+  `!sb p1score` with nothing after it, or `5.5` used to set the score to 0 on stream, and
+  `!sb teams four` dropped to two teams. Now nothing changes and SB → Logs says why.
+- **Flag typo protection is complete.** Country names resolve with or without accents
+  (`Türkiye`, `Côte d'Ivoire`, `méxico`); they used to be stored as typed and showed no
+  flag. Two letters count as a code only when the table knows the code (`zz` and `en`
+  used to become flags that do not exist). Text that is not an emoji is no longer stored
+  as a flag. The control panel and the roster import follow the same rules.
+- **Names are cut to 64 characters and titles to 80,** so a chat command cannot flood the
+  overlay. The control panel's boxes stop at the same lengths.
+
+### Fixed
+
+- **`Scoreboard Command` no longer fails silently.** An exception is logged and broadcast
+  as `scoreboard:error` (which the control panel shows), and a missing or disabled
+  `Scoreboard Push` is reported in the log instead of being ignored.
+- **A first-ever `swap` no longer stores the placeholder names swapped** (slot 1 used to
+  read "Player 2" from then on).
+- **The `Roster Helper` action checks before and after launching.** It does not start a
+  second helper when the port already answers, reports a wrong `BUNDLE` folder, and logs
+  a warning when the helper did not come up, instead of always logging "started".
+
+### Added
+
+- **`npm run verify:cs`** compiles the real C# actions with the .NET Framework compiler
+  and runs their logic against a stand-in for Streamer.bot's `CPH` object: 66 calls of
+  `Scoreboard Command` (chat styles, numbers, flags, caps, swap, failures) and the
+  `Scoreboard Push` payload. Until now no test executed the C#.
+
+**Re-paste `actions/scoreboard-command.cs` into the `Scoreboard Command` action and
+compile.** `Scoreboard Push` is unchanged. Re-paste `actions/streamerbot-roster-helper.cs`
+if you use the `Roster Helper` action (it still needs `System.dll` in References, and its
+`BUNDLE` line must be set again). Copy `tally-shared` and reload the dock.
+
 ## [1.0.30] — 2026-11-18
 
 ### Changed

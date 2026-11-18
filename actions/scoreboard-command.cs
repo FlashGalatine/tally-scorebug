@@ -19,8 +19,9 @@
 // value   = the name / number / title / nation text (set-* commands only)
 // flag    = OPTIONAL, only alongside `command=pNname`: that player's nation, applied
 //           in the same invocation. The control panel uses it so one Set click sends
-//           one DoAction — two DoActions to this action within a few ms arg-bleed on
-//           SB 1.0.4 and the name silently never lands. Chat never sends it.
+//           one DoAction — two runs of this action that overlap see one request's
+//           arguments ("arg-bleed", measured on SB 1.0.7, first seen on 1.0.4) and the
+//           name silently never lands. Chat never sends it.
 //
 // command=setmany (panel-only): apply MANY text fields in one invocation — each
 // present sibling arg among p1name…p4name, p1flag…p4flag, header, subheader is
@@ -34,11 +35,20 @@
 // until teams is raised. `teams 2` hides them again without erasing anything.
 //
 // FLAGS: p1flag/p2flag accept a nation in any of these forms — an ISO-3166 alpha-2
-// code (gb, jp), a country name or alias (uk, britain, great britain, united kingdom,
-// japan…), a flag emoji directly, or none/clear to remove. The value is resolved to a
-// flag EMOJI (the format every theme renders) and stored in sb.p1flag / sb.p2flag.
-// Unknown nations are rejected with a warning (typo protection). The alias table is a
-// mechanical copy of tally-shared/nations.js — verify.mjs diffs the two, keep them in sync.
+// code the table knows (gb, jp), a country name or alias with or without accents (uk,
+// britain, great britain, united kingdom, japan, Türkiye…), a flag emoji directly, or
+// none/clear to remove. The value is resolved to a flag EMOJI (the format every theme
+// renders) and stored in sb.p1flag / sb.p2flag. Anything else is rejected with a
+// warning (typo protection): an unknown name, two letters that are not a known code,
+// or text that is not an emoji. The alias table is a mechanical copy of
+// tally-shared/nations.js — verify.mjs diffs the two, keep them in sync.
+//
+// NUMBERS: pNscore and teams need a whole number. Anything else ("1o", "5.5", nothing)
+// is rejected with a warning and nothing changes. LENGTHS: names are cut to 64
+// characters and header/subheader to 80.
+//
+// QUEUE: put this action and "Scoreboard Push" in ONE BLOCKING queue (README, setup
+// step 3). In the default queue two runs can overlap, which loses commands.
 //
 // Requires the companion "Scoreboard Push" action (it does the broadcast). Uses ONLY
 // SB's default C# reference set — no Newtonsoft, no System.Uri.
@@ -59,7 +69,23 @@ public class CPHInline
         "header", "subheader", "setmany",
     };
 
+    const int NAME_MAX = 64;   // characters kept from a player name
+    const int TITLE_MAX = 80;  // characters kept from header / subheader
+
     public bool Execute()
+    {
+        // Nothing here may fail silently: an exception is logged AND broadcast as
+        // { type:"scoreboard:error", message }, which the control panel shows.
+        try { return Run(); }
+        catch (Exception ex)
+        {
+            CPH.LogWarn("[Scoreboard Command] ERROR: " + ex);
+            CPH.WebsocketBroadcastJson("{\"type\":\"scoreboard:error\",\"message\":" + JsonStr("Scoreboard Command: " + ex.Message) + "}");
+            return false;
+        }
+    }
+
+    bool Run()
     {
         // 1) Token: prefer the `command` arg (chat match or Stream Deck), strip a
         //    leading prefix like '!', and take just the first word.
@@ -101,14 +127,18 @@ public class CPHInline
             {
                 case "+": SetScore("sb.p" + n + "score", Score("sb.p" + n + "score") + 1); break;
                 case "-": SetScore("sb.p" + n + "score", Score("sb.p" + n + "score") - 1); break;
-                case "score": SetScore("sb.p" + n + "score", ParseInt(value, 0)); break;
+                case "score":
+                    int newScore;
+                    if (!TryInt(value, out newScore)) return BadNumber(token, value);
+                    SetScore("sb.p" + n + "score", newScore);
+                    break;
                 case "name":
-                    CPH.SetGlobalVar("sb.p" + n + "name", value, true);
+                    CPH.SetGlobalVar("sb.p" + n + "name", Cap(value, NAME_MAX, token), true);
                     // Optional companion arg: the control panel applies a name and that
-                    // player's flag in ONE DoAction. It must not send two — SB 1.0.4
-                    // bleeds the args of same-action DoActions that land within a few ms,
-                    // which dropped the name entirely. A bad flag only warns (SetFlag
-                    // logs it); the name still applies.
+                    // player's flag in ONE DoAction. It must not send two — overlapping
+                    // runs of this action mix their arguments, which dropped the name
+                    // entirely. A bad flag only warns (SetFlag logs it); the name still
+                    // applies.
                     string flagArg = Arg("flag", null);
                     if (flagArg != null) SetFlag("sb.p" + n + "flag", flagArg);
                     break;
@@ -123,42 +153,44 @@ public class CPHInline
                 break;
             case "swap": Swap(); break;
             case "teams":
-                CPH.SetGlobalVar("sb.teams", Clamp(ParseInt(value, 2), 2, 4).ToString(CultureInfo.InvariantCulture), true);
+                int newTeams;
+                if (!TryInt(value, out newTeams)) return BadNumber(token, value);
+                CPH.SetGlobalVar("sb.teams", Clamp(newTeams, 2, 4).ToString(CultureInfo.InvariantCulture), true);
                 break;
-            case "header": CPH.SetGlobalVar("sb.header", value, true); break;
-            case "subheader": CPH.SetGlobalVar("sb.subheader", value, true); break;
+            case "header": CPH.SetGlobalVar("sb.header", Cap(value, TITLE_MAX, token), true); break;
+            case "subheader": CPH.SetGlobalVar("sb.subheader", Cap(value, TITLE_MAX, token), true); break;
             case "setmany": if (!SetMany()) return false; break;
             default: return Unknown(token);
         }
 
         // Re-scan + re-broadcast to all overlays. Same action the overlay's
         // DoAction-on-connect fires, so live edits and sync share one code path.
-        CPH.RunAction("Scoreboard Push");
+        if (!CPH.RunAction("Scoreboard Push"))
+            CPH.LogWarn("[Scoreboard Command] could not run \"Scoreboard Push\" — is that action present, enabled and named exactly so? The change is stored but nothing was broadcast.");
         return true;
     }
 
     // `setmany` — every text field the control panel edits, batched into ONE
     // DoAction: each present sibling arg (p1name…p4name, p1flag…p4flag, header,
     // subheader) is applied; absent args leave their field untouched. This exists
-    // because SB 1.0.4 arg-bleeds two same-action DoActions that land within a few
-    // ms of each other — "edit Player 1 AND Player 2, click Set once" must be one
-    // call. A bad flag only warns (SetFlag logs it) and skips that field; the rest
-    // of the batch still applies. Panel-only — chat and Stream Deck keep the
-    // single-field commands above.
+    // because overlapping runs of this action mix their arguments — "edit Player 1 AND
+    // Player 2, click Set once" must be one call. A bad flag only warns (SetFlag logs
+    // it) and skips that field; the rest of the batch still applies. Panel-only — chat
+    // and Stream Deck keep the single-field commands above.
     bool SetMany()
     {
         bool any = false;
         for (int i = 1; i <= 4; i++)
         {
             string nm = Arg("p" + i + "name", null);
-            if (nm != null) { CPH.SetGlobalVar("sb.p" + i + "name", nm.Trim(), true); any = true; }
+            if (nm != null) { CPH.SetGlobalVar("sb.p" + i + "name", Cap(nm.Trim(), NAME_MAX, "p" + i + "name"), true); any = true; }
             string fl = Arg("p" + i + "flag", null);
             if (fl != null) { SetFlag("sb.p" + i + "flag", fl); any = true; }
         }
         string h = Arg("header", null);
-        if (h != null) { CPH.SetGlobalVar("sb.header", h.Trim(), true); any = true; }
+        if (h != null) { CPH.SetGlobalVar("sb.header", Cap(h.Trim(), TITLE_MAX, "header"), true); any = true; }
         string sh = Arg("subheader", null);
-        if (sh != null) { CPH.SetGlobalVar("sb.subheader", sh.Trim(), true); any = true; }
+        if (sh != null) { CPH.SetGlobalVar("sb.subheader", Cap(sh.Trim(), TITLE_MAX, "subheader"), true); any = true; }
         if (!any) CPH.LogWarn("[Scoreboard Command] setmany carried no fields (expected sibling args pNname/pNflag/header/subheader)");
         return any;
     }
@@ -169,14 +201,39 @@ public class CPHInline
         return false;
     }
 
+    // A score or team count that is not a whole number changes nothing. It used to be
+    // read as 0 (or 2 teams), so a typo wiped a score or hid two players on stream.
+    bool BadNumber(string token, string value)
+    {
+        CPH.LogWarn("[Scoreboard Command] '" + token + "' needs a whole number, got '" + value + "' — nothing changed");
+        return false;
+    }
+
+    // Cut over-long text (a chat command has no length limit of its own). Never cuts
+    // through the middle of a surrogate pair.
+    string Cap(string s, int max, string what)
+    {
+        if (s == null || s.Length <= max) return s;
+        int cut = max;
+        if (char.IsHighSurrogate(s[cut - 1])) cut--;
+        CPH.LogWarn("[Scoreboard Command] " + what + " was " + s.Length + " characters; kept the first " + cut);
+        return s.Substring(0, cut);
+    }
+
     // Swaps slots 1↔2 only — with 3-4 teams, re-set names directly instead.
     void Swap()
     {
         string n1 = Var("sb.p1name", "Player 1"), n2 = Var("sb.p2name", "Player 2");
         string f1 = Var("sb.p1flag", ""), f2 = Var("sb.p2flag", "");
         int s1 = Score("sb.p1score"), s2 = Score("sb.p2score");
+        // While neither name has ever been set the slots show their placeholders.
+        // Swapping those would store "Player 2" in slot 1 for good, so leave them.
+        bool namesSet = CPH.GetGlobalVar<string>("sb.p1name", true) != null || CPH.GetGlobalVar<string>("sb.p2name", true) != null;
+        if (namesSet)
+        {
         CPH.SetGlobalVar("sb.p1name", n2, true);
         CPH.SetGlobalVar("sb.p2name", n1, true);
+        }
         CPH.SetGlobalVar("sb.p1flag", f2, true);
         CPH.SetGlobalVar("sb.p2flag", f1, true);
         SetScore("sb.p1score", s2);
@@ -200,7 +257,8 @@ public class CPHInline
 
     string Var(string key, string dflt) { var v = CPH.GetGlobalVar<string>(key, true); return v == null ? dflt : v; }
     string Arg(string key, string dflt) { string a; return CPH.TryGetArg(key, out a) ? a : dflt; }
-    static int ParseInt(string s, int dflt) { int n; return int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out n) ? n : dflt; }
+    static int ParseInt(string s, int dflt) { int n; return TryInt(s, out n) ? n : dflt; }
+    static bool TryInt(string s, out int n) { return int.TryParse(s, NumberStyles.Integer, CultureInfo.InvariantCulture, out n); }
     static int Clamp(int v, int lo, int hi) { return Math.Min(hi, Math.Max(lo, v)); }
 
     // ── Nation → flag-emoji resolution ─────────────────────────────────────────
@@ -211,19 +269,56 @@ public class CPHInline
         if (raw.Length == 0) return "";
         string lower = raw.ToLowerInvariant();
         if (lower == "none" || lower == "clear" || lower == "off" || lower == "remove") return "";
-        foreach (char c in raw) if (c > 127) return raw; // already an emoji / flag — pass through
+        if (IsEmojiOnly(raw)) return raw; // already a flag / emoji — pass through
         string key = NormalizeNation(raw);
         string iso;
         if (NATIONS.TryGetValue(key, out iso)) return IsoToEmoji(iso);
-        if (key.Length == 2 && key[0] >= 'a' && key[0] <= 'z' && key[1] >= 'a' && key[1] <= 'z')
-            return IsoToEmoji(key); // bare ISO-3166 alpha-2 code
+        // A bare two-letter code counts only when it is a code the table maps to, so a
+        // typo such as "zz" or "en" is rejected instead of becoming a flag that does not exist.
+        if (key.Length == 2 && key[0] >= 'a' && key[0] <= 'z' && key[1] >= 'a' && key[1] <= 'z' && NATIONS.ContainsValue(key))
+            return IsoToEmoji(key);
         return null;
+    }
+
+    // True when every code point is part of a flag or emoji sequence: regional
+    // indicators, the emoji blocks, the variation selector, the joiner, and the tag
+    // characters used by subdivision flags. MUST match isEmojiOnly() in nations.js.
+    static bool IsEmojiOnly(string s)
+    {
+        if (s.Length == 0) return false;
+        for (int i = 0; i < s.Length; i++)
+        {
+            int cp = s[i];
+            if (char.IsHighSurrogate(s[i]))
+            {
+                if (i + 1 >= s.Length || !char.IsLowSurrogate(s[i + 1])) return false;
+                cp = char.ConvertToUtf32(s[i], s[i + 1]);
+                i++;
+            }
+            else if (char.IsLowSurrogate(s[i])) return false;
+            bool ok = (cp >= 0x1F1E6 && cp <= 0x1F1FF) || (cp >= 0x1F300 && cp <= 0x1FAFF)
+                || (cp >= 0x2600 && cp <= 0x27BF) || cp == 0xFE0F || cp == 0x200D
+                || (cp >= 0xE0020 && cp <= 0xE007F);
+            if (!ok) return false;
+        }
+        return true;
+    }
+
+    // Drop accents: decompose, then remove the combining marks ("Türkiye" → "Turkiye").
+    // MUST match fold() in tally-shared/nations.js exactly.
+    static string Fold(string s)
+    {
+        string d = (s ?? "").Normalize(NormalizationForm.FormD);
+        var sb = new StringBuilder(d.Length);
+        foreach (char c in d)
+            if (CharUnicodeInfo.GetUnicodeCategory(c) != UnicodeCategory.NonSpacingMark) sb.Append(c);
+        return sb.ToString();
     }
 
     // MUST match normalize() in tally-shared/nations.js exactly.
     static string NormalizeNation(string s)
     {
-        s = (s ?? "").ToLowerInvariant();
+        s = Fold(s).ToLowerInvariant();
         var sb = new StringBuilder(s.Length + 8);
         foreach (char c in s)
         {
@@ -235,6 +330,33 @@ public class CPHInline
         string outp = sb.ToString();
         while (outp.IndexOf("  ", StringComparison.Ordinal) >= 0) outp = outp.Replace("  ", " ");
         return outp.Trim();
+    }
+
+    // Minimal, correct JSON string encoder (same as the one in "Scoreboard Push").
+    static string JsonStr(string s)
+    {
+        if (s == null) return "\"\"";
+        var sb = new StringBuilder(s.Length + 2);
+        sb.Append('"');
+        foreach (char c in s)
+        {
+            switch (c)
+            {
+                case '"':  sb.Append("\\\""); break;
+                case '\\': sb.Append("\\\\"); break;
+                case '\b': sb.Append("\\b"); break;
+                case '\f': sb.Append("\\f"); break;
+                case '\n': sb.Append("\\n"); break;
+                case '\r': sb.Append("\\r"); break;
+                case '\t': sb.Append("\\t"); break;
+                default:
+                    if (c < ' ') sb.Append("\\u").Append(((int)c).ToString("x4"));
+                    else sb.Append(c);
+                    break;
+            }
+        }
+        sb.Append('"');
+        return sb.ToString();
     }
 
     // ISO-2 → regional-indicator emoji, via manual surrogate pairs (no ConvertFromUtf32
