@@ -10,6 +10,37 @@ traceability.
 
 ## [Unreleased]
 
+### Changed
+
+- **The control panel sends one command at a time.** Each command waits for the
+  scoreboard's own broadcast before the next is sent (with an 800 ms fail-safe).
+  Streamer.bot answers a request when the action is queued, not when it has run, so the
+  answer cannot be used for this. Two score clicks in the same instant, or a held Enter,
+  no longer lose a command on an install whose actions are still in the Default queue.
+- **An edit stays marked until its Set is confirmed.** Before, the mark was cleared the
+  moment the click was sent, so a lost or rejected command silently reverted the box.
+- **An unknown nation is held back and named.** It used to be sent raw and only earned a
+  warning in the Streamer.bot log. The other edited fields still go.
+
+### Added
+
+- **The panel says what went wrong.** A line under the connection status reports a
+  missing action (Streamer.bot's "was not found" reply), an older `Scoreboard Command`
+  that did not answer a `setmany`, a `scoreboard:error` broadcast, an unknown nation, and
+  a click made while disconnected.
+- **Default-queue warning.** Streamer.bot's reply names the queue an action is in. While
+  either action answers from `Default`, the panel shows a yellow box pointing at setup
+  step 3.
+
+### Fixed
+
+- **A held Enter no longer repeats the Set,** and a held Enter or Space on a +/− button
+  no longer streams score changes. A double click on Set sends one request.
+- **A team-count click while disconnected** no longer changes the panel's idea of the
+  team count.
+
+Copy `tally-shared` and reload the dock. No action needs re-pasting.
+
 ## [1.0.22] — 2026-11-18
 
 ### Fixed

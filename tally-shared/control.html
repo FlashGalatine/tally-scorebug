@@ -14,6 +14,11 @@
   .dot { width:8px; height:8px; border-radius:50%; background:#ef4444; flex:none; }
   .dot.on { background:#22c55e; }
   .mini { padding:3px 8px; font-size:11px; background:#22242c; }
+  .notice { font-size:12px; color:var(--sub); min-height:0; margin:-6px 0 10px; }
+  .notice:empty { display:none; }
+  .notice.err { color:#fca5a5; }
+  .queuewarn { font-size:12px; color:#fde68a; background:#3a2f12; border:1px solid #7c5e10; border-radius:8px; padding:8px 10px; margin-bottom:10px; }
+  .queuewarn[hidden] { display:none; }
   .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:12px; margin-bottom:10px; }
   .card h2 { font-size:11px; text-transform:uppercase; letter-spacing:.08em; color:var(--sub); margin:0 0 8px; }
   .row { display:flex; gap:6px; align-items:center; margin-bottom:8px; }
@@ -62,6 +67,8 @@
 <div class="wrap">
   <h1>Scorebug &mdash; Control</h1>
   <div class="status"><span class="dot" id="dot"></span><span id="statusText">connecting&hellip;</span></div>
+  <div class="notice" id="notice" role="status" aria-live="polite"></div>
+  <div class="queuewarn" id="queueWarn" role="status" hidden></div>
 
   <div class="card p1">
     <h2>Player 1</h2>
@@ -156,7 +163,7 @@
   var HELPER = window.__ROSTER_HELPER || 'http://127.0.0.1:' + (portParam('rosterport') || '7481');
   var SYNC_ACTION = 'Scoreboard Push';
   var CMD_ACTION = 'Scoreboard Command';
-  var ws = null, id = 0, delay = 1500;
+  var ws = null, id = 0, delay = 1500, syncId = null;
   var rosterPlayers = new Map(); // name → flag emoji | null
   var rosterEntries = new Map(), roster = null, currentTeams = 2;
   var opponentVersion = 0, opponentPending = null;
@@ -187,17 +194,86 @@
     $('dot').classList.toggle('on', on);
     $('statusText').textContent = text;
   }
-  // ONE DoAction per click — never two in a row to the same action. When two runs
-  // of one action overlap (Streamer.bot's default queue; measured on 1.0.7, first
-  // seen on 1.0.4) they both see one request's arguments, so a burst silently loses
-  // a command. A blocking queue in Streamer.bot prevents the overlap (see README). Extra fields ride
-  // as siblings of `value` in the same args object instead (see doSet).
-  function send(command, value, extra) {
-    if (!ws || ws.readyState !== 1) return;
+  // ── Sending ─────────────────────────────────────────────────────────────────
+  // ONE DoAction per click, and ONE in flight at a time. When two runs of one action
+  // overlap (Streamer.bot's default queue; measured on 1.0.7, first seen on 1.0.4)
+  // they both see one request's arguments, so a burst silently loses a command. The
+  // real fix is a blocking queue in Streamer.bot (README, setup step 3); this queue
+  // protects an install that has not set one.
+  //
+  // Streamer.bot replies to a DoAction when the action is QUEUED, not when it has
+  // run, so the reply cannot pace the next send. A command that runs ends in a
+  // scoreboard:update broadcast, so the next send waits for that broadcast (or a
+  // fail-safe). The reply is still read: an error reply means the action is missing,
+  // and its queueName tells us whether the action sits in the default queue.
+  var sendQueue = [], inFlight = null;
+  var FAILSAFE_MS = 800;
+  var stickyNote = false;
+  function note(text, kind, sticky) {
+    var el = $('notice');
+    el.textContent = text || '';
+    el.className = 'notice' + (kind ? ' ' + kind : '');
+    stickyNote = !!(text && sticky);
+  }
+  var actionQueues = {}; // action name → queue name from its last reply
+  function sawQueue(action, queueName) {
+    if (typeof queueName !== 'string') return;
+    actionQueues[action] = queueName;
+    var inDefault = Object.keys(actionQueues).filter(function (a) { return actionQueues[a] === 'Default'; });
+    var el = $('queueWarn');
+    el.hidden = !inDefault.length;
+    el.textContent = inDefault.length
+      ? inDefault.join(' and ') + (inDefault.length > 1 ? ' are' : ' is') + ' in Streamer.bot\u2019s Default queue, where two commands that arrive together can run with one command\u2019s arguments. Put both Scoreboard actions in one blocking queue (README, setup step 3).'
+      : '';
+  }
+  // Returns false when nothing was sent. `fields` (Set clicks only) maps each field
+  // id to the raw text that was in its box, so the edit can be settled afterwards.
+  function send(command, value, extra, fields) {
+    if (!ws || ws.readyState !== 1) { note('Not connected to Streamer.bot \u2014 that was not sent.', 'err'); return false; }
     var args = { command: command };
     if (value !== undefined) args.value = value;
     if (extra) for (var k in extra) args[k] = extra[k];
-    ws.send(JSON.stringify({ request: 'DoAction', id: String(++id), action: { name: CMD_ACTION }, args: args }));
+    if (fields) { // a second click on Set while the first is still on its way: same request, send once
+      var key = JSON.stringify(args);
+      var same = function (j) { return j && j.fields && JSON.stringify(j.args) === key; };
+      if (same(inFlight) || sendQueue.some(same)) return true;
+    }
+    sendQueue.push({ args: args, fields: fields || null });
+    pump();
+    return true;
+  }
+  function pump() {
+    if (inFlight || !sendQueue.length || !ws || ws.readyState !== 1) return;
+    var job = sendQueue.shift();
+    job.id = String(++id);
+    job.replied = false;
+    inFlight = job;
+    ws.send(JSON.stringify({ request: 'DoAction', id: job.id, action: { name: CMD_ACTION }, args: job.args }));
+    job.timer = setTimeout(function () { finish(job, 'timeout'); }, FAILSAFE_MS);
+  }
+  function finish(job, how, detail) {
+    if (inFlight !== job) return;
+    clearTimeout(job.timer);
+    inFlight = null;
+    if (how === 'ok') {
+      // The command ran. Each field that still holds what was sent stops being an
+      // unsent edit and shows the live value (a typed "uk" becomes the flag).
+      if (job.fields) Object.keys(job.fields).forEach(function (f) {
+        if ($(f).value !== job.fields[f]) return; // edited again meanwhile: keep it
+        setDirty(f, false);
+        delete manualEdits[f];
+        $(f).value = (live[f] == null ? '' : live[f]);
+        if (/^p[1-4]flag$/.test(f)) updatePreview(f.slice(0, 2));
+      });
+      if (!stickyNote) note('');
+    } else if (how === 'error') {
+      note('Streamer.bot: ' + detail + (job.fields ? ' Your edits are kept.' : ''), 'err');
+    } else {
+      note('No update came back for \u201c' + job.args.command + '\u201d.' +
+        (job.args.command === 'setmany' ? ' If Scoreboard Command is an older copy, re-paste actions/scoreboard-command.cs.' : ' Check Streamer.bot \u2192 Logs.') +
+        (job.fields ? ' Your edits are kept.' : ''), 'err');
+    }
+    pump();
   }
   // Only an unsent edit (`dirty`) is protected from a broadcast. Focus alone is not:
   // a box left focused after Enter used to keep its old value for ever, and a later
@@ -486,18 +562,44 @@
     ws.onopen = function () {
       delay = 1500; setStatus(true, 'connected · ' + WS_URL);
       ws.send(JSON.stringify({ request: 'Subscribe', id: String(++id), events: { general: ['Custom'] } }));
+      note('');
       setTimeout(function () {
-        if (ws && ws.readyState === 1) ws.send(JSON.stringify({ request: 'DoAction', id: String(++id), action: { name: SYNC_ACTION }, args: { reason: 'control-connect' } }));
+        if (!ws || ws.readyState !== 1) return;
+        syncId = String(++id);
+        ws.send(JSON.stringify({ request: 'DoAction', id: syncId, action: { name: SYNC_ACTION }, args: { reason: 'control-connect' } }));
       }, 150);
     };
     ws.onmessage = function (ev) {
       var m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+      if (m && m.id && !m.event) { // a reply to one of our requests
+        var failed = m.status && m.status !== 'ok';
+        var why = (m.error && String(m.error)) || 'the request failed.';
+        if (inFlight && m.id === inFlight.id) {
+          if (failed) finish(inFlight, 'error', why);
+          else { inFlight.replied = true; sawQueue(CMD_ACTION, m.args && m.args.queueName); }
+        } else if (m.id === syncId) {
+          if (failed) note('Streamer.bot: ' + why + ' The panel cannot read the scoreboard.', 'err');
+          else sawQueue(SYNC_ACTION, m.args && m.args.queueName);
+        }
+        return;
+      }
       if (m && m.event && m.event.source === 'General' && m.event.type === 'Custom') {
         var dd = m.data; if (typeof dd === 'string') { try { dd = JSON.parse(dd); } catch (e) {} }
-        if (dd && dd.type === 'scoreboard:update') onState(dd);
+        if (dd && dd.type === 'scoreboard:update') {
+          onState(dd);
+          if (inFlight && inFlight.replied) finish(inFlight, 'ok');
+        } else if (dd && dd.type === 'scoreboard:error') {
+          note('Scoreboard Push failed: ' + (dd.message || 'see Streamer.bot \u2192 Logs'), 'err');
+        }
       }
     };
-    ws.onclose = function () { setStatus(false, 'disconnected · retrying'); setTimeout(connect, delay); delay = Math.min(delay * 1.5, 10000); };
+    ws.onclose = function () {
+      // Nothing queued is replayed after a reconnect: a stale command could undo a
+      // newer change. Unsent edits stay in their boxes, still marked.
+      sendQueue.length = 0;
+      if (inFlight) { clearTimeout(inFlight.timer); inFlight = null; }
+      setStatus(false, 'disconnected · retrying'); setTimeout(connect, delay); delay = Math.min(delay * 1.5, 10000);
+    };
     ws.onerror = function () {};
   }
 
@@ -517,35 +619,44 @@
   // by a roster pick). An untouched flag box is not sent, so the flag on stream stays.
   function doSet(setCmd, srcId) {
     // A disconnected click cannot apply edits; keep their dirty/manual protection.
-    if (!ws || ws.readyState !== 1) return;
+    if (!ws || ws.readyState !== 1) { note('Not connected to Streamer.bot \u2014 that was not sent.', 'err'); return; }
     cancelOpponent();
     setDirty(srcId, true); // the clicked field always sends, edited or not
     var companion = /^p[1-4]name$/.test(setCmd) ? setCmd.slice(0, 2) + 'flag' : null;
-    var fields = TEXT_FIELDS.filter(function (f) { return dirty[f]; });
-    var vals = {};
-    fields.forEach(function (f) {
+    var vals = {}, raw = {}, unknown = [];
+    TEXT_FIELDS.filter(function (f) { return dirty[f]; }).forEach(function (f) {
       var v = $(f).value;
-      // Flags resolve client-side; unresolvable text is sent raw so the SB action
-      // logs its own warning and leaves that flag unchanged.
-      if (/flag$/.test(f)) { var r = window.Nations.resolveFlag(v); if (r !== null) v = r; }
+      if (/flag$/.test(f)) {
+        // A nation the table does not know is held back, stays marked, and is named
+        // in the notice. Sending it would only earn a warning in the SB log.
+        var r = window.Nations.resolveFlag(v);
+        if (r === null) { unknown.push('Player ' + f.charAt(1) + ' (\u201c' + v.trim() + '\u201d)'); return; }
+        raw[f] = v; v = r;
+      } else raw[f] = v;
       vals[f] = v;
-      setDirty(f, false);
-      delete manualEdits[f];
     });
-    if (fields.length === 1) { send(fields[0], vals[fields[0]]); return; }
-    if (fields.length === 2 && companion && fields.indexOf(companion) >= 0) {
-      send(setCmd, vals[setCmd], { flag: vals[companion] });
+    if (unknown.length) note('Unknown nation for ' + unknown.join(', ') + ' \u2014 not sent. Use an ISO code (jp), a country name, a flag emoji, or none.', 'err', true);
+    else if (stickyNote) note('');
+    var fields = Object.keys(vals);
+    if (!fields.length) return;
+    // Dirty flags are NOT cleared here. They clear when the command is seen to have
+    // run (finish), so a lost or rejected command leaves the edits in place.
+    if (fields.length === 1) { send(fields[0], vals[fields[0]], null, raw); return; }
+    if (fields.length === 2 && companion && fields.indexOf(companion) >= 0 && fields.indexOf(setCmd) >= 0) {
+      send(setCmd, vals[setCmd], { flag: vals[companion] }, raw);
       return;
     }
-    send('setmany', undefined, vals);
+    send('setmany', undefined, vals, raw);
   }
   document.addEventListener('click', function (e) {
     var b = e.target.closest('button'); if (!b) return;
     if (b.id === 'reloadRoster') { loadRoster(); return; }
     if (b.id === 'importRoster') { importRoster(); return; }
     if (b.dataset.teams) {
+      // Only assume the new team count once the click has actually been sent.
+      if (!send('teams', b.dataset.teams)) return;
       cancelOpponent(); currentTeams = Number(b.dataset.teams); updateOpponentOption();
-      send('teams', b.dataset.teams); return;
+      return;
     }
     if (b.dataset.cmd) { if (b.dataset.cmd === 'swap') cancelOpponent(); send(b.dataset.cmd); }
     else if (b.dataset.set) doSet(b.dataset.set, b.dataset.src);
@@ -554,6 +665,9 @@
     if (e.key === 'Escape' && !e.defaultPrevented && e.target.tagName === 'INPUT' && dirty[e.target.id]) {
       cancelOpponent(); revert(e.target.id); return;
     }
+    // A held key must not repeat the action: Enter in a box would re-send the Set
+    // every 30 ms, and Enter on a focused +/− button would stream score changes.
+    if (e.repeat && (e.key === 'Enter' || e.key === ' ')) { if (e.target.tagName === 'BUTTON') e.preventDefault(); return; }
     if (e.key !== 'Enter' || e.target.tagName !== 'INPUT') return;
     if (e.target.id === 'rosterUrl') { importRoster(); return; }
     var setBtn = document.querySelector('button[data-src="' + e.target.id + '"]');
