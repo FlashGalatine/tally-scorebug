@@ -10,6 +10,8 @@ traceability.
 
 ## [Unreleased]
 
+## [1.0.24] — 2026-11-18
+
 ### Changed
 
 - **The control panel sends one command at a time.** Each command waits for the
@@ -253,6 +255,7 @@ Initial release — Streamer.bot-native tournament scorebug for OBS. (`d90adf2`)
 Primetime theme and roster scrapers vendored from StreamScoreboard (same
 author, MIT).
 
+[1.0.24]: https://github.com/FlashGalatine/tally-scorebug/compare/v1.0.22...v1.0.24
 [1.0.22]: https://github.com/FlashGalatine/tally-scorebug/compare/v1.0.20...v1.0.22
 [1.0.20]: https://github.com/FlashGalatine/tally-scorebug/compare/v1.0.18...v1.0.20
 [1.0.18]: https://github.com/FlashGalatine/tally-scorebug/compare/v1.0.16...v1.0.18
