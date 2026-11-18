@@ -10,6 +10,8 @@ traceability.
 
 ## [Unreleased]
 
+## [1.0.36] — 2026-11-18
+
 Fixes from the review of the 1.0.16 to 1.0.34 pull requests. **Re-paste
 `actions/scoreboard-command.cs` into Streamer.bot and Compile**; it changed again.
 
@@ -442,6 +444,7 @@ Initial release — Streamer.bot-native tournament scorebug for OBS. (`d90adf2`)
 Primetime theme and roster scrapers vendored from StreamScoreboard (same
 author, MIT).
 
+[1.0.36]: https://github.com/FlashGalatine/tally-scorebug/compare/v1.0.34...v1.0.36
 [1.0.34]: https://github.com/FlashGalatine/tally-scorebug/compare/v1.0.32...v1.0.34
 [1.0.32]: https://github.com/FlashGalatine/tally-scorebug/compare/v1.0.30...v1.0.32
 [1.0.30]: https://github.com/FlashGalatine/tally-scorebug/compare/v1.0.28...v1.0.30
