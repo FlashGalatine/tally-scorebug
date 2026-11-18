@@ -628,7 +628,7 @@ async function verifySendQueue(browser) {
   const isDirty = (id) => p.evaluate((i) => document.getElementById(i).classList.contains('dirty'), id);
   const notice = () => p.textContent('#notice');
   async function fresh() {
-    await mock('/mock/bleed?on=0'); await mock('/mock/oldcs?on=0');
+    await mock('/mock/bleed?on=0'); await mock('/mock/oldcs?on=0'); await mock('/mock/throw?on=0'); await mock('/mock/slow?ms=0');
     await mock('/mock/missing?name=Scoreboard%20Command&on=0');
     await mock('/mock/cmd?command=teams&value=2');
     await mock('/mock/cmd?command=setmany&p1name=Left&p1flag=none&p2name=Right&p2flag=none&header=Cup&subheader=FT2');
@@ -721,6 +721,49 @@ async function verifySendQueue(browser) {
     await p.evaluate(() => !document.getElementById('autoOpponent').closest('.card').textContent.includes('available with 2 teams')) && (await cmds()).length === 0,
     await p.textContent('#opponentInfo'));
 
+  // ── Review fixes ──
+  // The action's own error stays on screen: the fail-safe must not replace it.
+  for (const old of [0, 1]) {
+    await fresh(); await mock('/mock/oldcs?on=' + old); await mock('/mock/throw?on=1');
+    await p.fill('#header', 'Boom Title');
+    await p.click('button[data-set="header"]');
+    const shown = await waitFor(() => /mock exception/.test(document.getElementById('notice').textContent));
+    await p.waitForTimeout(1200); // longer than the fail-safe
+    check(`an action error stays in the notice after the fail-safe time (${old ? 'older action, no answer' : 'with an answer'})`,
+      shown && /mock exception/.test(await notice()) && !/No update came back/.test(await notice()) && await isDirty('header'), await notice());
+  }
+
+  // Set on an untouched box that is lost must not leave it holding an old value.
+  await fresh(); await mock('/mock/missing?name=Scoreboard%20Command&on=1');
+  await p.click('button[data-set="header"]');
+  await waitFor(() => /was not found/.test(document.getElementById('notice').textContent));
+  check('a lost Set on an untouched box does not mark it as an unsent edit', !await isDirty('header'), await notice());
+  await mock('/mock/missing?name=Scoreboard%20Command&on=0');
+  await mock('/mock/cmd?command=header&value=Chat%20Title');
+  check('…so it still follows a change made from chat', await waitFor(() => document.getElementById('header').value === 'Chat Title'), await p.inputValue('#header'));
+
+  // Someone else's update must not count as the answer to this panel's command.
+  await fresh();
+  await p.click('button[data-cmd="p1+"]');
+  await mockUntil((st) => st.p1score === 1);
+  await p.waitForTimeout(100); // the answer to that click has been seen
+  await mock('/mock/slow?ms=500');
+  await clearSent();
+  await p.fill('#header', 'Slow Title');
+  await p.click('button[data-set="header"]');
+  await p.click('button[data-cmd="p1+"]'); // queued behind the Set
+  await p.waitForTimeout(80);
+  await mock('/mock/cmd?command=p2%2B'); // a chat command: an update that is not ours
+  await p.waitForTimeout(150);
+  const midSent = await cmds();
+  check('an update caused by someone else does not confirm the command in flight',
+    await isDirty('header') && midSent.length === 1 && midSent[0].command === 'header', JSON.stringify(midSent.map((a) => a.command)));
+  check('every panel command carries a request id', midSent.every((a) => typeof a.rid === 'string' && a.rid.length > 2), JSON.stringify(midSent));
+  const stSlow = await mockUntil((st) => st.header === 'Slow Title' && st.p1score === 2);
+  check('…and both commands still land, one after the other',
+    stSlow.header === 'Slow Title' && stSlow.p1score === 2 && await waitFor(() => !document.getElementById('header').classList.contains('dirty')), JSON.stringify({ h: stSlow.header, p1: stSlow.p1score }));
+  await mock('/mock/slow?ms=0');
+
   check('send-queue flow raises no browser script errors', errors.length === 0, errors.join('; '));
   await p.close();
 }
@@ -771,6 +814,28 @@ async function verifyImport(browser) {
   check('the Import button is usable again afterwards', !await p.isDisabled('#importRoster'));
   check('import flow raises no browser script errors', errors.length === 0, errors.join('; '));
   await p.close();
+
+  // The same refusal from the REAL helper to a REAL page on an address it does not
+  // allow (this test's panel is not on port 7474). The browser must be able to read it.
+  const REAL_PORT = 7484;
+  const env = { ...process.env, ROSTER_PORT: String(REAL_PORT), TALLY_CONFIG: 'no-such-config.json', TALLY_ROSTER_FILE: 'no-such-folder/roster.json' };
+  delete env.ROSTER_ALLOWED_ORIGINS;
+  const helper = spawn(process.execPath, ['roster-helper.mjs'], { cwd: __dirname, stdio: ['ignore', 'pipe', 'pipe'], env });
+  try {
+    await new Promise((res, rej) => {
+      let out = ''; const t = setTimeout(() => rej(new Error('helper did not start\n' + out)), 6000);
+      helper.stdout.setEncoding('utf8');
+      helper.stdout.on('data', (d) => { out += d; if (out.includes('listening')) { clearTimeout(t); res(); } });
+    });
+    const rp = await browser.newPage({ viewport: { width: 420, height: 900 } });
+    await rp.route('**/tally-shared/roster.json', (route) => route.fulfill({ status: 404, body: 'none' }));
+    await rp.goto(`${BASE}/tally-shared/control.html?sbport=${WS_PORT}&rosterport=${REAL_PORT}`);
+    await rp.fill('#rosterUrl', 'https://challonge.com/cup');
+    await rp.click('#importRoster');
+    const said = await rp.waitForFunction(() => /refused this panel.*not allowed/.test(document.getElementById('rosterInfo').textContent), null, { timeout: 5000 }).then(() => true).catch(() => false);
+    check('the real helper\u2019s refusal reaches a real page on an address it does not allow', said, await rp.textContent('#rosterInfo'));
+    await rp.close();
+  } finally { helper.kill(); }
 }
 
 // Sprint 7: the panels need nothing from the internet (TAL-19).
@@ -819,6 +884,22 @@ async function verifyOffline(browser) {
   await fetch(`${BASE}/mock/cmd?command=p1flag&value=gb`);
   check('…and a real code brings it back',
     await strip.waitForFunction(() => { const i = document.getElementById('flag'); return i.dataset.code === 'gb' && i.naturalWidth > 0 && !document.getElementById('flag-cell').classList.contains('hidden'); }, null, { timeout: 4000 }).then(() => true).catch(() => false));
+
+  // Review fixes: England draws from its own file, and one failed download is retried.
+  const ENGLAND = '\u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}';
+  await fetch(`${BASE}/mock/cmd?command=p1flag&value=${encodeURIComponent(ENGLAND)}`);
+  check('the England flag emoji draws (gb-eng.svg)',
+    await strip.waitForFunction(() => { const i = document.getElementById('flag'); return i.dataset.code === 'gb-eng' && i.naturalWidth > 0 && !document.getElementById('flag-cell').classList.contains('hidden'); }, null, { timeout: 4000 }).then(() => true).catch(() => false),
+    await strip.evaluate(() => document.getElementById('flag').dataset.code || '(none)'));
+  let frAsked = 0;
+  await strip.route('**/flags/fr.svg', (route) => (++frAsked === 1 ? route.fulfill({ status: 503, body: 'busy' }) : route.continue()));
+  await fetch(`${BASE}/mock/cmd?command=p1flag&value=fr`);
+  const hidOnFail = await strip.waitForFunction(() => document.getElementById('flag-cell').classList.contains('hidden'), null, { timeout: 4000 }).then(() => true).catch(() => false);
+  await fetch(`${BASE}/mock/cmd?command=p1%2B`); // any later update
+  check('a flag download that failed once is tried again on the next update',
+    hidOnFail && await strip.waitForFunction(() => { const i = document.getElementById('flag'); return i.dataset.code === 'fr' && i.naturalWidth > 0 && !document.getElementById('flag-cell').classList.contains('hidden'); }, null, { timeout: 4000 }).then(() => true).catch(() => false),
+    'asked ' + frAsked + ' times');
+  await fetch(`${BASE}/mock/cmd?command=reset`);
 
   const title = await ctx.newPage();
   await title.goto(`${BASE}/tally-themes/primetime/panels/title-309x49.html?sbport=${WS_PORT}`, { waitUntil: 'load' });

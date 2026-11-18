@@ -158,6 +158,12 @@
     const special = SPECIALTY_FLAGS[s.split(String.fromCodePoint(0xFE0F)).join('')];
     if (special) return special;
     const cps = Array.from(s).map((c) => c.codePointAt(0));
+    // A subdivision flag: black flag, tag letters ("gbeng"), cancel tag → gb-eng.svg.
+    // flags/ holds England, Scotland and Wales; any other has no file and hides.
+    if (cps.length > 4 && cps[0] === 0x1F3F4 && cps[cps.length - 1] === 0xE007F) {
+      const tag = cps.slice(1, -1).map((cp) => (cp >= 0xE0030 && cp <= 0xE007A ? String.fromCharCode(cp - 0xE0000) : '?')).join('');
+      if (/^[a-z]{2}[a-z0-9]{1,3}$/.test(tag)) return FLAG_BASE + tag.slice(0, 2) + '-' + tag.slice(2) + '.svg';
+    }
     if (cps.length === 2 && cps.every((cp) => cp >= 0x1F1E6 && cp <= 0x1F1FF)) {
       return FLAG_BASE + String.fromCharCode(cps[0] - 0x1F1E6 + 97, cps[1] - 0x1F1E6 + 97) + '.svg';
     }
@@ -173,10 +179,12 @@
   function loadFlag(url) {
     if (location.protocol === 'file:') return Promise.resolve(url);
     if (!flagCache.has(url)) {
+      // "No such file" (404) is remembered. Any other failure is forgotten, so a
+      // request that failed once (Streamer.bot restarting) is tried again.
       flagCache.set(url, fetch(url)
-        .then((r) => (r.ok ? r.text() : null))
+        .then((r) => { if (r.ok) return r.text(); if (r.status !== 404) flagCache.delete(url); return null; })
         .then((text) => (text && /<svg[\s>]/i.test(text) ? svgUri(text) : null))
-        .catch(() => null));
+        .catch(() => { flagCache.delete(url); return null; }));
     }
     return flagCache.get(url);
   }
@@ -204,7 +212,7 @@
     };
     const show = (uri) => {
       // data-code names the flag for tests and for anyone inspecting the page.
-      const m = /\/([a-z]{2})\.svg$/.exec(src);
+      const m = /\/([a-z]{2}(?:-[a-z0-9]{1,3})?)\.svg$/.exec(src);
       if (m) img.dataset.code = m[1]; else img.dataset.code = 'special';
       img.onerror = () => { if (lastFlagSrc === src) hide(); }; // a file that is not a picture
       img.src = uri;
@@ -218,7 +226,10 @@
     // empty plate.
     loadFlag(src).then((uri) => {
       if (lastFlagSrc !== src) return; // a newer flag was asked for meanwhile
-      if (uri) show(uri); else hide();
+      if (uri) return show(uri);
+      hide();
+      // Not remembered as missing: forget this flag so the next update asks again.
+      if (!flagCache.has(src)) lastFlagSrc = null;
     });
   }
 

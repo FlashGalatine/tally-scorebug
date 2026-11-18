@@ -35,6 +35,8 @@ public class CphStub
         Globals[name] = Convert.ToString(value, CultureInfo.InvariantCulture);
     }
 
+    public void UnsetGlobalVar(string name, bool persisted = true) { Globals.Remove(name); }
+
     public bool TryGetArg<T>(string name, out T value)
     {
         object o;

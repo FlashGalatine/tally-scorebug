@@ -10,6 +10,50 @@ traceability.
 
 ## [Unreleased]
 
+Fixes from the review of the 1.0.16 to 1.0.34 pull requests. **Re-paste
+`actions/scoreboard-command.cs` into Streamer.bot and Compile**; it changed again.
+
+### Fixed
+
+- **A refused control panel is told why.** The roster helper's "origin not allowed"
+  answer could not be read by the browser, so a panel on another address said "roster
+  helper not running" while the helper was running. The refusal is now readable by the
+  page it refuses, and by nothing else.
+- **Every flag the theme ships can be typed again.** 1.0.32 accepted a two-letter code
+  only when a country name mapped to it, which refused 40 codes that have a flag file
+  (`im`, `je`, `gg`, `vg`, `eu` and others). Each now has a name in the nation table
+  ("isle of man", "jersey", …), so the code and the name both work, in chat, in the
+  panel and in a start.gg import.
+- **An action's error stays on screen.** The panel showed a `scoreboard:error` for under
+  a second and then replaced it with "No update came back". It now settles the command
+  with that error, and no longer calls every such error a Scoreboard Push failure.
+- **A lost Set on an untouched box no longer sticks.** Clicking Set on a box that had not
+  been edited marked it as an unsent edit; if that command was lost, the box stopped
+  following the scoreboard and its old value was re-sent with every later Set.
+- **Only the panel's own command confirms it.** Any scoreboard update (chat, another
+  panel, an overlay connecting) used to count as "my command ran", so the next command
+  could be sent while the previous one was still running. Scoreboard Command now answers
+  each panel command by its request id (`scoreboard:ack`), with the reason when it was
+  rejected. An older pasted action still works: the panel falls back to the old rule
+  until it sees an answer.
+- **A flag download that failed once is tried again** on the next update, instead of that
+  overlay hiding the flag until its source is refreshed.
+- **Challonge:** a two-letter bracket name followed by a sub-page
+  (`challonge.com/ab/standings`) is no longer read as a language prefix.
+- **`swap` with one name set** moves that name across and leaves the other slot unset,
+  instead of storing the placeholder text "Player 1" as a name.
+- **A flag made only of invisible characters** (a joiner, a variation selector, tag
+  characters) is refused.
+- **`rosterAllowedOrigins` may be one string** (comma separated) as well as a list;
+  any other type is reported instead of being ignored.
+
+### Added
+
+- The Primetime theme draws the England, Scotland and Wales flag emoji (three more
+  flag-icons files).
+- Mock switches `/mock/throw` and `/mock/slow`, and tests for each fix above, including
+  the real roster helper refusing a real browser page.
+
 ## [1.0.34] — 2026-11-18
 
 ### Fixed

@@ -202,12 +202,19 @@
   // protects an install that has not set one.
   //
   // Streamer.bot replies to a DoAction when the action is QUEUED, not when it has
-  // run, so the reply cannot pace the next send. A command that runs ends in a
-  // scoreboard:update broadcast, so the next send waits for that broadcast (or a
-  // fail-safe). The reply is still read: an error reply means the action is missing,
-  // and its queueName tells us whether the action sits in the default queue.
+  // run, so the reply cannot pace the next send. Each command therefore carries a
+  // request id (`rid`), and "Scoreboard Command" ends every run that has one with a
+  // { type:"scoreboard:ack", rid, ok, message } broadcast: the next send waits for the
+  // answer to ITS OWN command (or a fail-safe). A scoreboard:update cannot do that
+  // job, because chat, another panel or an overlay connecting cause updates too.
+  // An older pasted Scoreboard Command sends no answer; until one has been seen the
+  // panel falls back to "the next scoreboard:update means it ran".
+  // The reply is still read: an error reply means the action is missing, and its
+  // queueName tells us whether the action sits in the default queue.
   var sendQueue = [], inFlight = null;
   var FAILSAFE_MS = 800;
+  var SESSION = Math.random().toString(36).slice(2, 8); // keeps two panels' ids apart
+  var ackSeen = false; // this Scoreboard Command answers with scoreboard:ack
   var stickyNote = false;
   function note(text, kind, sticky) {
     var el = $('notice');
@@ -246,9 +253,12 @@
     if (inFlight || !sendQueue.length || !ws || ws.readyState !== 1) return;
     var job = sendQueue.shift();
     job.id = String(++id);
+    job.rid = SESSION + '-' + job.id;
     job.replied = false;
     inFlight = job;
-    ws.send(JSON.stringify({ request: 'DoAction', id: job.id, action: { name: CMD_ACTION }, args: job.args }));
+    var args = { rid: job.rid };
+    for (var k in job.args) args[k] = job.args[k];
+    ws.send(JSON.stringify({ request: 'DoAction', id: job.id, action: { name: CMD_ACTION }, args: args }));
     job.timer = setTimeout(function () { finish(job, 'timeout'); }, FAILSAFE_MS);
   }
   function finish(job, how, detail) {
@@ -267,8 +277,11 @@
       });
       if (!stickyNote) note('');
     } else if (how === 'error') {
+      detail = String(detail || 'the command failed').trim();
+      if (!/[.!?]$/.test(detail)) detail += '.';
       note('Streamer.bot: ' + detail + (job.fields ? ' Your edits are kept.' : ''), 'err');
     } else {
+      ackSeen = false; // no answer came: do not insist on one for the next command
       note('No update came back for \u201c' + job.args.command + '\u201d.' +
         (job.args.command === 'setmany' ? ' If Scoreboard Command is an older copy, re-paste actions/scoreboard-command.cs.' : ' Check Streamer.bot \u2192 Logs.') +
         (job.fields ? ' Your edits are kept.' : ''), 'err');
@@ -586,6 +599,7 @@
     ws = new WebSocket(WS_URL);
     ws.onopen = function () {
       delay = 1500; setStatus(true, 'connected · ' + WS_URL);
+      ackSeen = false;
       ws.send(JSON.stringify({ request: 'Subscribe', id: String(++id), events: { general: ['Custom'] } }));
       note('');
       setTimeout(function () {
@@ -612,9 +626,18 @@
         var dd = m.data; if (typeof dd === 'string') { try { dd = JSON.parse(dd); } catch (e) {} }
         if (dd && dd.type === 'scoreboard:update') {
           onState(dd);
-          if (inFlight && inFlight.replied) finish(inFlight, 'ok');
+          // Fallback for a Scoreboard Command that sends no answer (see Sending).
+          if (inFlight && inFlight.replied && !ackSeen) finish(inFlight, 'ok');
+        } else if (dd && dd.type === 'scoreboard:ack') {
+          ackSeen = true;
+          if (inFlight && dd.rid === inFlight.rid) finish(inFlight, dd.ok ? 'ok' : 'error', dd.message);
         } else if (dd && dd.type === 'scoreboard:error') {
-          note('Scoreboard Push failed: ' + (dd.message || 'see Streamer.bot \u2192 Logs'), 'err');
+          // Either action can send this. With a command in flight it is that command's
+          // failure: settle it now, or the fail-safe would replace the reason with
+          // "No update came back" a moment later.
+          var why2 = dd.message || 'an action failed; see Streamer.bot \u2192 Logs';
+          if (inFlight) finish(inFlight, 'error', why2);
+          else note('Streamer.bot action failed: ' + why2, 'err');
         }
       }
     };
@@ -646,10 +669,12 @@
     // A disconnected click cannot apply edits; keep their dirty/manual protection.
     if (!ws || ws.readyState !== 1) { note('Not connected to Streamer.bot \u2014 that was not sent.', 'err'); return; }
     cancelOpponent();
-    setDirty(srcId, true); // the clicked field always sends, edited or not
     var companion = /^p[1-4]name$/.test(setCmd) ? setCmd.slice(0, 2) + 'flag' : null;
     var vals = {}, raw = {}, unknown = [];
-    TEXT_FIELDS.filter(function (f) { return dirty[f]; }).forEach(function (f) {
+    // The clicked field always sends, edited or not. It is NOT marked as an unsent
+    // edit for that: if the command is lost, an untouched box must go on following
+    // the scoreboard instead of holding (and later re-sending) an old value.
+    TEXT_FIELDS.filter(function (f) { return dirty[f] || f === srcId; }).forEach(function (f) {
       var v = $(f).value;
       if (/flag$/.test(f)) {
         // A nation the table does not know is held back, stays marked, and is named

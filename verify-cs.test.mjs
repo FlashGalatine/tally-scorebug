@@ -112,6 +112,15 @@ test('Scoreboard Command compiles with mscorlib alone and behaves as specified',
     [{ command: 'p1flag', value: ENGLAND }, (r) => r.ret && r.g['sb.p1flag'] === ENGLAND], // a subdivision flag passes through
     [{ command: 'p1flag', value: PIRATE }, (r) => r.ret && r.g['sb.p1flag'] === PIRATE],
     [{ command: 'p1flag', value: GB }, (r) => r.ret && r.g['sb.p1flag'] === GB],
+    // every flag file the theme ships can be typed as its code or its name
+    [{ command: 'p1flag', value: 'im' }, (r) => r.ret && r.g['sb.p1flag'] === '🇮🇲'],
+    [{ command: 'p1flag', value: 'Jersey' }, (r) => r.ret && r.g['sb.p1flag'] === '🇯🇪'],
+    [{ command: 'p1flag', value: 'EU' }, (r) => r.ret && r.g['sb.p1flag'] === '🇪🇺'],
+    [{ command: 'p1flag', value: GB }, (r) => r.ret && r.g['sb.p1flag'] === GB],
+    // nothing visible: a joiner, a variation selector or tag characters alone
+    [{ command: 'p1flag', value: '\u200D' }, (r) => !r.ret && r.g['sb.p1flag'] === GB],
+    [{ command: 'p1flag', value: '\uFE0F\u200D' }, (r) => !r.ret && r.g['sb.p1flag'] === GB],
+    [{ command: 'p1flag', value: '\u{E0067}\u{E007F}' }, (r) => !r.ret && r.g['sb.p1flag'] === GB],
     [{ command: 'p1flag', value: 'zz' }, (r) => !r.ret && r.warn === 1 && r.ran.length === 0 && r.g['sb.p1flag'] === GB], // two letters, not a code
     [{ command: 'p1flag', value: 'en' }, (r) => !r.ret && r.g['sb.p1flag'] === GB],
     [{ command: 'p1flag', value: 'florpland' }, (r) => !r.ret && r.g['sb.p1flag'] === GB],
@@ -151,7 +160,22 @@ test('Scoreboard Command compiles with mscorlib alone and behaves as specified',
     ['#reset'],
     [{ command: 'swap' }, (r) => r.ret && !('sb.p1name' in r.g) && !('sb.p2name' in r.g)],
     [{ command: 'p2name', value: 'Solo' }, (r) => r.g['sb.p2name'] === 'Solo'],
-    [{ command: 'swap' }, (r) => r.g['sb.p1name'] === 'Solo' && r.g['sb.p2name'] === 'Player 1'],
+    // one name set: it moves across, and the placeholder is never stored
+    [{ command: 'swap' }, (r) => r.g['sb.p1name'] === 'Solo' && !('sb.p2name' in r.g)],
+    [{ command: 'swap' }, (r) => r.g['sb.p2name'] === 'Solo' && !('sb.p1name' in r.g)],
+    // ── the answer the control panel waits for ──
+    [{ command: 'p1+', rid: 'a-1' }, (r) => r.ret && r.bc.length === 1 && JSON.stringify(JSON.parse(r.bc[0])) === JSON.stringify({ type: 'scoreboard:ack', rid: 'a-1', ok: true, message: '' })],
+    [{ command: 'p1score', value: '1o', rid: 'a-2' }, (r) => !r.ret && r.bc.length === 1 && JSON.parse(r.bc[0]).rid === 'a-2' && JSON.parse(r.bc[0]).ok === false && /needs a whole number/.test(JSON.parse(r.bc[0]).message)],
+    [{ command: 'p1flag', value: 'florpland', rid: 'a-3' }, (r) => !r.ret && JSON.parse(r.bc[0]).ok === false && /unknown nation/.test(JSON.parse(r.bc[0]).message)],
+    [{ command: 'p1name', value: 'Named', flag: 'florpland', rid: 'a-4' }, (r) => r.ret && JSON.parse(r.bc[0]).ok === true && JSON.parse(r.bc[0]).message === ''], // the name applied
+    ['#pushfails=1'],
+    [{ command: 'p1+', rid: 'a-5' }, (r) => r.ret && JSON.parse(r.bc[0]).ok === false && /Scoreboard Push/.test(JSON.parse(r.bc[0]).message)],
+    ['#pushfails=0'],
+    ['#throw=sb.header'],
+    [{ command: 'header', value: 'boom', rid: 'a-6' }, (r) => !r.ret && r.bc.length === 2 && JSON.parse(r.bc[0]).type === 'scoreboard:error'
+      && JSON.parse(r.bc[1]).type === 'scoreboard:ack' && JSON.parse(r.bc[1]).ok === false && /made to fail/.test(JSON.parse(r.bc[1]).message)],
+    ['#throw='],
+    [{ command: 'p1+' }, (r) => r.ret && r.bc.length === 0], // chat and Stream Deck send no rid and get no answer
   ];
   const lines = cases.map(([a]) => (typeof a === 'string' ? a : args(a)));
   const records = await run(dir, b.exe, lines);

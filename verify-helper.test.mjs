@@ -85,7 +85,9 @@ test('a foreign origin is refused everywhere and nothing is written', async (t) 
   ]) {
     const r = await call(port, method, path, { ...opts, headers: { ...(opts.headers || {}), origin: FOREIGN } });
     assert.equal(r.status, 403, `${method} ${path} from a foreign origin`);
-    assert.equal(r.headers['access-control-allow-origin'], undefined, `${method} ${path} must not grant CORS`);
+    // The refusal itself is readable by the refused page (so a control panel on another
+    // address can show why). It is the only thing that page ever gets.
+    assert.equal(r.headers['access-control-allow-origin'], FOREIGN, `${method} ${path}: the refusal is readable`);
   }
   assert.equal(await exists(box.roster), false, 'the roster file must not have been created');
   assert.equal((await call(port, 'GET', '/health')).status, 200, 'the helper is still running');
@@ -216,6 +218,10 @@ test('loadConfig: keys, allowed origins and a missing file', async (t) => {
   const cfg = await (await lib()).loadConfig();
   assert.equal(cfg.challongeApiKey, 'key-1', 'surrounding spaces are trimmed');
   assert.deepEqual(cfg.rosterAllowedOrigins, ['http://127.0.0.1:9000']);
+  await writeFile(box.config, JSON.stringify({ rosterAllowedOrigins: 'http://127.0.0.1:9000, http://localhost:9000' }));
+  assert.deepEqual((await (await lib()).loadConfig()).rosterAllowedOrigins, ['http://127.0.0.1:9000', 'http://localhost:9000'], 'one string works like the environment variable');
+  await writeFile(box.config, JSON.stringify({ rosterAllowedOrigins: 7480 }));
+  await assert.rejects(async () => (await lib()).loadConfig(), /must be a list of addresses/);
   await writeFile(box.config, '[1,2]');
   await assert.rejects((await lib()).loadConfig(), /must hold a JSON object/);
 });

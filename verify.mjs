@@ -493,7 +493,8 @@ async function main() {
       check('GET /health → ok, api level 2 or later', health.status === 200 && hj.ok === true && hj.api >= 2, JSON.stringify(hj));
       check('the panel origin is echoed back, never a wildcard', health.headers.get('access-control-allow-origin') === BASE, health.headers.get('access-control-allow-origin'));
       const foreign = await fetch(`${HB}/health`, { headers: { Origin: 'https://evil.example' } });
-      check('a foreign origin → 403 and no CORS header', foreign.status === 403 && foreign.headers.get('access-control-allow-origin') === null);
+      check('a foreign origin → 403, readable by that page so the panel can show why',
+        foreign.status === 403 && foreign.headers.get('access-control-allow-origin') === 'https://evil.example' && /not allowed/.test((await foreign.json()).error));
       const noUrl = await fetch(`${HB}/import`, { method: 'POST', headers: { 'content-type': 'application/json', Origin: BASE }, body: '{}' });
       check('POST /import without a url → 400 {ok:false}', noUrl.status === 400 && (await noUrl.json()).ok === false);
       const badUrl = await fetch(`${HB}/import`, { method: 'POST', headers: { 'content-type': 'application/json', Origin: BASE }, body: JSON.stringify({ url: 'https://example.com/not-a-bracket' }) });
