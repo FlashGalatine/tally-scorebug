@@ -27,7 +27,8 @@ Every panel is a static HTML file served by Streamer.bot's HTTP Server under
 ```
 
 1. **Declare what it renders** — `window.__SLOT` (`player1` … `player4` / `match`) and
-   `window.__FIELD` (your choice of label) — *before* loading panel-core.
+   `window.__FIELD` (your choice of label) — *before* loading your theme script, which is
+   what reads them (panel-core does not).
 2. **Load `/tally-shared/panel-core.js`** by that **absolute path**. This is the transport: it
    connects to Streamer.bot's WebSocket (`:8080`), subscribes, asks for the current state
    (so a panel added mid-match paints immediately), and re-dispatches every update as DOM

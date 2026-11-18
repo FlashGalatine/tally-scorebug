@@ -309,7 +309,7 @@ npm run verify     # protocol + HTTP + nation-table parity  → ALL GREEN
 `npm start` runs a small mock of SB's two servers so you can develop themes and poke the
 panels with zero setup: drive state with the console keys (`q/a` P1 ±, `w/s` P2 ±, `r`
 reset, `x` swap) or `GET /mock/cmd?command=p1+`. `npm run verify:render` (needs
-`npm i --no-save playwright-core`) renders the real theme headless and checks pixels;
+`npm i --no-save playwright-core@1.65.1`) renders the real theme headless and checks pixels;
 `npm run shots` regenerates the screenshots above.
 `npm run verify:cs` (Windows) compiles the real C# actions with the .NET Framework
 compiler and runs their logic against a stand-in for Streamer.bot's `CPH` object.

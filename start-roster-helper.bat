@@ -3,7 +3,7 @@ rem Double-click launcher for the roster-import helper — no terminal typing ne
 rem Keep this window open while importing brackets; close it to stop the helper.
 rem (Or skip this file entirely: the "Roster Helper" Streamer.bot action in
 rem  streamerbot-roster-helper.cs starts the same thing hidden, from inside SB.)
-title Lite Scoreboard - Roster Helper
+title Tally - Roster Helper
 cd /d "%~dp0"
 where node >nul 2>nul
 if errorlevel 1 (

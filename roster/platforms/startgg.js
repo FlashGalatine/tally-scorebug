@@ -154,8 +154,13 @@ export const startgg = {
         sets.set(String(match.id), match);
       }
     }
-    const active = [...sets.values()].filter(s => s.state === 2);
-    const candidates = active.length ? active : [...sets.values()];
+    // In progress (2) first, then called (6), then everything else. In a round-robin
+    // pool every pending set exists at once, so without the middle tier a called set
+    // was reported as ambiguous.
+    const allSets = [...sets.values()];
+    const active = allSets.filter(s => s.state === 2);
+    const called = allSets.filter(s => s.state === 6);
+    const candidates = active.length ? active : called.length ? called : allSets;
     if (candidates.length > 1) {
       return { status: 'ambiguous', message: 'Multiple possible start.gg matchups — enter the opponent manually.' };
     }

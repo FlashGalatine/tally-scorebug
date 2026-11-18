@@ -4,7 +4,7 @@
 // control surface chat / Stream Deck / the panel use), waits for the Quantico
 // webfont, and captures the Primetime panels + the control panel at 2x.
 //
-// Requires: npm install --no-save playwright-core  (uses system Edge/Chrome)
+// Requires: npm install --no-save playwright-core@1.65.1  (uses system Edge/Chrome)
 // Run: npm run shots
 
 import { spawn } from 'node:child_process';

@@ -2,24 +2,26 @@
 
 A professional ESPN-style scoreboard: slight gradients, accented borders, and 55° angular plates with a glossy sheen. Designed to sit directly above a fighting game's health bars, with a trapezoid match-title plate top-center.
 
-## Panels (3)
+## Panels (5)
 
-One combined strip per player plus a title — three OBS browser sources total.
+One combined strip per player plus a title: three OBS browser sources for a two-team match, up to five with the optional third and fourth teams.
 
 | Panel                          | Dimensions | Notes                                                        |
 |--------------------------------|------------|--------------------------------------------------------------|
 | `title-309x49.html`            | 309×49     | Trapezoid (NW/NE 55°), purple/black. Header + optional subheader; header grows and centers when the subheader is empty. |
 | `player1-strip-545x63.html`    | 545×63     | Red/black parallelogram cells (NW/SE 55°): score, full-bleed flag, sponsor/name/pronouns. Score at the outer (left) edge. |
 | `player2-strip-545x63.html`    | 545×63     | Blue/black, mirrored (NE/SW 55°): name, flag, score at the outer (right) edge. |
+| `player3-strip-545x63.html`    | 545×63     | Third team (3–4 team mode). Hidden while the scoreboard runs two teams. |
+| `player4-strip-545x63.html`    | 545×63     | Fourth team (4 team mode). Hidden unless four teams are set. |
 
 Inside each strip the name plate flexes: when the flag is toggled off (or empty) its cell collapses and the name plate widens to fill the space.
 
 ## Field handling
 
 - **Sponsor** — set the name as `Sponsor | Player` (chat or control panel); the sponsor renders in light gray at regular weight, the player name in bold white (no visible pipe).
-- **Pronouns** — built-in add-in, rendered smaller after the name when enabled.
-- **Flag** — built-in add-in, rendered as a full-bleed SVG filling its cell. The emoji value is converted to an ISO-3166 alpha-2 code and fetched from the flag-icons CDN (a raw 2-letter code also works). The picker's specialty flags (chequered, pirate, rainbow, transgender) render from inline SVGs — no network needed.
-- **Auto-fit** — sponsor + name + pronouns shrink together to fit the plate; header/subheader likewise.
+- **Pronouns** — not available in Tally. The theme still has the element, because it is shared with StreamScoreboard, whose scoreboard sends pronouns; Tally's never does.
+- **Flag** — rendered as a full-bleed SVG filling its cell. The emoji value is converted to an ISO-3166 alpha-2 code and the matching file is read from this theme's `flags/` folder (a raw 2-letter code also works). A code with no file hides the cell.
+- **Auto-fit** — sponsor + name shrink together to fit the plate; header/subheader likewise.
 - Names render exactly as typed — set them in UPPERCASE for the full broadcast look.
 - `logo` and `color` add-ins are not rendered by this theme.
 
