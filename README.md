@@ -88,6 +88,13 @@ or click **<> Code → Download ZIP** on the repo page and extract it. The
    !sb p1+                            !sb swap
    ```
 
+   **Restrict who can use the command.** `Scoreboard Command` does whatever the chat
+   command passes it and does not check who typed it. In the `!sb` command's own settings
+   (Commands tab), set its permissions so only **moderators** and the **broadcaster** can
+   use it. Anyone the command allows can put any text on the overlay
+   (`!sb p1name …`, `!sb header …`), reset the scores, or change the team count. The same
+   applies to every other chat command you point at this action.
+
 A panel added mid-match paints immediately: on connect it asks Streamer.bot to re-broadcast
 current state (there is no "blank until the next update").
 

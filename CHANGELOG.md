@@ -45,6 +45,13 @@ traceability.
   highlighted row is still the "Set" shortcut. Evo-sized rosters render the first
   200 matches and say how many more. `verify` 61/61, `verify:render` 25/25.
 
+### Documentation
+
+- **Restrict the chat command.** The quick start now says to limit the `!sb` command
+  (and any other chat command pointed at `Scoreboard Command`) to moderators and the
+  broadcaster. The action does not check who typed a command, so an unrestricted
+  command lets any viewer set names and titles, reset scores or change the team count.
+
 ## [1.0.10] — 2026-07-29
 
 ### Added
