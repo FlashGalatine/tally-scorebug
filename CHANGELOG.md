@@ -10,6 +10,8 @@ traceability.
 
 ## [Unreleased]
 
+## [1.0.26] — 2026-11-18
+
 ### Security
 
 - **The roster helper no longer answers every web page.** It used to send
@@ -289,6 +291,7 @@ Initial release — Streamer.bot-native tournament scorebug for OBS. (`d90adf2`)
 Primetime theme and roster scrapers vendored from StreamScoreboard (same
 author, MIT).
 
+[1.0.26]: https://github.com/FlashGalatine/tally-scorebug/compare/v1.0.24...v1.0.26
 [1.0.24]: https://github.com/FlashGalatine/tally-scorebug/compare/v1.0.22...v1.0.24
 [1.0.22]: https://github.com/FlashGalatine/tally-scorebug/compare/v1.0.20...v1.0.22
 [1.0.20]: https://github.com/FlashGalatine/tally-scorebug/compare/v1.0.18...v1.0.20
