@@ -10,6 +10,8 @@ traceability.
 
 ## [Unreleased]
 
+## [1.0.22] — 2026-11-18
+
 ### Fixed
 
 - **A roster player with no flag no longer inherits the previous player's flag.** Picking
@@ -220,6 +222,7 @@ Initial release — Streamer.bot-native tournament scorebug for OBS. (`d90adf2`)
 Primetime theme and roster scrapers vendored from StreamScoreboard (same
 author, MIT).
 
+[1.0.22]: https://github.com/FlashGalatine/tally-scorebug/compare/v1.0.20...v1.0.22
 [1.0.20]: https://github.com/FlashGalatine/tally-scorebug/compare/v1.0.18...v1.0.20
 [1.0.18]: https://github.com/FlashGalatine/tally-scorebug/compare/v1.0.16...v1.0.18
 [1.0.16]: https://github.com/FlashGalatine/tally-scorebug/compare/f264150...v1.0.16
