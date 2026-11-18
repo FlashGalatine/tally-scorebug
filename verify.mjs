@@ -14,8 +14,9 @@
 // It does NOT render pixels; verify-render.mjs does that in a real browser.
 
 import { spawn } from 'node:child_process';
-import { readFile } from 'node:fs/promises';
-import { resolve, dirname } from 'node:path';
+import { readFile, mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { WebSocket } from 'ws';
 
@@ -431,13 +432,16 @@ async function main() {
       check(`?sbport=${bad} is ignored (default port, local host)`, u === 'ws://127.0.0.1:8080/', u);
     }
 
-    // ── 5. Roster helper: CORS + input validation (no external network) ─────────
-    console.log('\n[5] roster helper: starts, CORS, rejects bad input');
+    // ── 5. Roster helper: starts, answers the panel, refuses other origins ───────
+    // (the full contract is in verify-helper.test.mjs; this is the smoke test)
+    console.log('\n[5] roster helper: starts, health, refuses a foreign origin');
     const HELPER_PORT = Number(process.env.ROSTER_PORT) || 7482;
+    const sandbox = await mkdtemp(join(tmpdir(), 'tally-verify-'));
     const helper = await new Promise((res2, rej2) => {
       const child = spawn(process.execPath, ['roster-helper.mjs'], {
         cwd: __dirname, stdio: ['ignore', 'pipe', 'pipe'],
-        env: { ...process.env, ROSTER_PORT: String(HELPER_PORT) },
+        env: { ...process.env, ROSTER_PORT: String(HELPER_PORT), ROSTER_ALLOWED_ORIGINS: BASE,
+          TALLY_ROSTER_FILE: join(sandbox, 'roster.json'), TALLY_CONFIG: join(sandbox, 'config.json') },
       });
       let out = '';
       const t = setTimeout(() => rej2(new Error('helper no start\n' + out)), 6000);
@@ -448,16 +452,22 @@ async function main() {
     });
     try {
       const HB = `http://127.0.0.1:${HELPER_PORT}`;
-      const noUrl = await fetch(`${HB}/import`);
-      check('GET /import without url → 400 {ok:false}', noUrl.status === 400 && (await noUrl.json()).ok === false);
-      check('CORS header present', noUrl.headers.get('access-control-allow-origin') === '*');
-      const badUrl = await fetch(`${HB}/import?url=${encodeURIComponent('https://example.com/not-a-bracket')}`);
+      const health = await fetch(`${HB}/health`, { headers: { Origin: BASE } });
+      const hj = await health.json();
+      check('GET /health → ok, api level 2 or later', health.status === 200 && hj.ok === true && hj.api >= 2, JSON.stringify(hj));
+      check('the panel origin is echoed back, never a wildcard', health.headers.get('access-control-allow-origin') === BASE, health.headers.get('access-control-allow-origin'));
+      const foreign = await fetch(`${HB}/health`, { headers: { Origin: 'https://evil.example' } });
+      check('a foreign origin → 403 and no CORS header', foreign.status === 403 && foreign.headers.get('access-control-allow-origin') === null);
+      const noUrl = await fetch(`${HB}/import`, { method: 'POST', headers: { 'content-type': 'application/json', Origin: BASE }, body: '{}' });
+      check('POST /import without a url → 400 {ok:false}', noUrl.status === 400 && (await noUrl.json()).ok === false);
+      const badUrl = await fetch(`${HB}/import`, { method: 'POST', headers: { 'content-type': 'application/json', Origin: BASE }, body: JSON.stringify({ url: 'https://example.com/not-a-bracket' }) });
       const badBody = await badUrl.json();
       check('unsupported URL → 400 + platform list in error', badUrl.status === 400 && /Challonge/i.test(badBody.error || ''), JSON.stringify(badBody));
-      const opt = await fetch(`${HB}/import`, { method: 'OPTIONS' });
-      check('OPTIONS preflight → 204 + CORS', opt.status === 204 && opt.headers.get('access-control-allow-origin') === '*');
+      const opt = await fetch(`${HB}/import`, { method: 'OPTIONS', headers: { Origin: BASE } });
+      check('OPTIONS preflight from the panel → 204 + its origin', opt.status === 204 && opt.headers.get('access-control-allow-origin') === BASE);
     } finally {
       helper.kill();
+      await rm(sandbox, { recursive: true, force: true });
     }
   } catch (err) {
     failed++;

@@ -1,4 +1,5 @@
 {
   "challongeApiKey": null,
-  "startggApiKey": null
+  "startggApiKey": null,
+  "rosterAllowedOrigins": []
 }

@@ -39,6 +39,7 @@ export const roundone = {
 
     const res = await fetch(`${API_BASE}/${encodeURIComponent(slug)}`, {
       headers: { Accept: 'application/json', 'User-Agent': 'StreamScoreboard/0.1' },
+      signal: AbortSignal.timeout(12000),
     });
     if (!res.ok) {
       throw new Error(`Round.one ${res.status}: ${res.statusText}`);

@@ -122,7 +122,7 @@ test('missing event data reports a lookup error', async t => {
   await assert.rejects(lookup, /unavailable/i);
 });
 
-test('helper HTTP route returns fresh matchup, validation errors and CORS headers', async t => {
+test('helper HTTP route returns fresh matchup and validation errors, with no wildcard CORS', async t => {
   const port = 20000 + process.pid % 20000;
   const preload = `globalThis.fetch = async (url, options) => {
     const body = JSON.parse(options.body);
@@ -132,7 +132,8 @@ test('helper HTTP route returns fresh matchup, validation errors and CORS header
     return new Response(JSON.stringify(Array.isArray(body) ? [{ data }] : { data }));
   };`;
   const child = spawn(process.execPath, ['--import', 'data:text/javascript,' + encodeURIComponent(preload), 'roster-helper.mjs'], {
-    cwd: new URL('.', import.meta.url), env: { ...process.env, ROSTER_PORT: String(port) }, stdio: ['ignore', 'pipe', 'pipe'],
+    // TALLY_CONFIG points at a file that does not exist, so the operator's real keys are never read.
+    cwd: new URL('.', import.meta.url), env: { ...process.env, ROSTER_PORT: String(port), TALLY_CONFIG: 'no-such-config.json' }, stdio: ['ignore', 'pipe', 'pipe'],
   });
   t.after(() => child.kill());
   await new Promise((resolve, reject) => {
@@ -145,7 +146,7 @@ test('helper HTTP route returns fresh matchup, validation errors and CORS header
   const response = await fetch(endpoint + '?eventId=101&entrantId=11');
   assert.equal(response.status, 200);
   assert.equal(response.headers.get('cache-control'), 'no-store');
-  assert.equal(response.headers.get('access-control-allow-origin'), '*');
+  assert.equal(response.headers.get('access-control-allow-origin'), null, 'no Origin was sent, so no CORS header comes back');
   const payload = await response.json();
   assert.equal(payload.ok, true);
   assert.equal(payload.opponent.name, 'Beta');

@@ -352,6 +352,24 @@
       .then(applyRoster)
       .catch(function () { $('rosterInfo').textContent = 'roster: none'; });
   }
+  // The helper contract this panel needs (roster-helper.mjs API_LEVEL): POST /import.
+  var HELPER_API = 2;
+  var IMPORT_LIMIT_MS = 120000; // a 5,000-entrant bracket is 50 requests; give up after two minutes
+  // Resolves with null when the helper is fine, or with the line to show. An older
+  // helper left running after an update answers /health with its 404 text.
+  function helperProblem() {
+    var c = new AbortController();
+    var t = setTimeout(function () { c.abort(); }, 4000);
+    return fetch(HELPER + '/health', { cache: 'no-store', signal: c.signal })
+      .then(function (r) { return r.json().then(function (j) { return { status: r.status, j: j }; }); })
+      .then(function (x) {
+        if (x.status === 403) return 'the roster helper refused this panel: ' + ((x.j && x.j.error) || 'origin not allowed');
+        if (!x.j || !x.j.ok || !(x.j.api >= HELPER_API)) return 'an older roster helper is still running \u2014 stop it (close its window or end its node.exe) and start the new one';
+        return null;
+      })
+      .catch(function () { return 'roster helper not running \u2014 start start-roster-helper.bat, or run `npm run roster` in the bundle folder'; })
+      .then(function (v) { clearTimeout(t); return v; });
+  }
   function importRoster() {
     var url = $('rosterUrl').value.trim();
     if (!url) { $('rosterInfo').textContent = 'paste a tournament URL first'; return; }
@@ -359,16 +377,23 @@
     var btn = $('importRoster');
     btn.disabled = true;
     $('rosterInfo').textContent = 'importing…';
-    fetch(HELPER + '/import?url=' + encodeURIComponent(url))
-      .then(function (r) { return r.json(); })
-      .then(function (j) {
-        if (j.ok) applyRoster(j.roster);
-        else $('rosterInfo').textContent = 'import failed: ' + (j.error || 'unknown error');
-      })
-      .catch(function () {
-        $('rosterInfo').textContent = 'roster helper not running — run `npm run roster` in the bundle folder';
-      })
-      .then(function () { btn.disabled = false; });
+    var done = function () { btn.disabled = false; };
+    helperProblem().then(function (problem) {
+      if (problem) { $('rosterInfo').textContent = problem; return; }
+      var c = new AbortController();
+      var t = setTimeout(function () { c.abort(); }, IMPORT_LIMIT_MS);
+      return fetch(HELPER + '/import', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ url: url }), signal: c.signal })
+        .then(function (r) { return r.json(); })
+        .then(function (j) {
+          if (!j.ok) { $('rosterInfo').textContent = 'import failed: ' + (j.error || 'unknown error'); return; }
+          // A roster the panel cannot use must not be reported as "helper not running".
+          try { applyRoster(j.roster); } catch (e) { $('rosterInfo').textContent = 'import failed: the helper returned a roster this panel could not read'; }
+        })
+        .catch(function () {
+          $('rosterInfo').textContent = c.signal.aborted ? 'import timed out \u2014 the tournament site did not answer' : 'import failed: lost contact with the roster helper';
+        })
+        .then(function () { clearTimeout(t); });
+    }).then(done, done);
   }
   function cancelOpponent() {
     opponentVersion++;

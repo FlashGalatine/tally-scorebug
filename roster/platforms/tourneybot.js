@@ -42,6 +42,7 @@ export const tourneybot = {
         Accept: 'text/html',
         'User-Agent': 'StreamScoreboard/0.1 (+https://github.com/)',
       },
+      signal: AbortSignal.timeout(12000),
     });
     if (!res.ok) {
       throw new Error(`TourneyBot ${res.status}: ${res.statusText}`);

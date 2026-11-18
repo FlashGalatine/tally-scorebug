@@ -44,6 +44,7 @@ export const matcherino = {
 
     const res = await fetch(`${API_BASE}/bounties/findById?id=${encodeURIComponent(tournamentId)}`, {
       headers: { Accept: 'application/json', 'User-Agent': 'StreamScoreboard/0.1' },
+      signal: AbortSignal.timeout(12000),
     });
     if (!res.ok) {
       throw new Error(`Matcherino ${res.status}: ${res.statusText}`);

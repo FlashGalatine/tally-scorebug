@@ -18,34 +18,76 @@
 // which Streamer.bot's C# can't do out of the box and the browser can't either (CORS).
 // Streamer.bot only ever serves the resulting roster.json.
 
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, writeFile, rename, rm } from 'node:fs/promises';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { detectPlatform, listSupportedPlatforms } from './roster/platforms/index.js';
 import { startgg } from './roster/platforms/startgg.js';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
-export const ROSTER_PATH = resolve(__dirname, 'tally-shared', 'roster.json');
-const CONFIG_PATH = resolve(__dirname, 'config.json');
+// TALLY_ROSTER_FILE / TALLY_CONFIG relocate the two files (the test suites use them
+// so they never touch an operator's roster or keys).
+export const ROSTER_PATH = process.env.TALLY_ROSTER_FILE || resolve(__dirname, 'tally-shared', 'roster.json');
+const CONFIG_PATH = process.env.TALLY_CONFIG || resolve(__dirname, 'config.json');
 
 export { listSupportedPlatforms };
 
 // API keys are OPTIONAL (public Challonge brackets + the start.gg public proxy work
 // without one). Copy config.example.json to config.json to set them, or use the
 // CHALLONGE_API_KEY / STARTGG_API_KEY environment variables.
-async function loadConfig() {
+// A missing config.json is normal (keyless paths). A config.json that EXISTS but
+// cannot be read as JSON is an error the operator must see: silently ignoring it
+// meant a key that was never used and a puzzling "event not found".
+export async function loadConfig() {
   let cfg = {};
-  try { cfg = JSON.parse(await readFile(CONFIG_PATH, 'utf8')); } catch { /* no config → keyless paths */ }
+  let raw = null;
+  try { raw = await readFile(CONFIG_PATH, 'utf8'); }
+  catch (err) { if (err.code !== 'ENOENT') throw new Error('config.json could not be read: ' + err.message); }
+  if (raw != null) {
+    raw = raw.replace(/^\uFEFF/, ''); // a byte-order mark (Notepad, PowerShell 5 Out-File)
+    try { cfg = JSON.parse(raw); }
+    catch { throw new Error('config.json is not valid JSON (check for a trailing comma or a missing quote). Your API keys were not used.'); }
+    if (!cfg || typeof cfg !== 'object' || Array.isArray(cfg)) throw new Error('config.json must hold a JSON object.');
+  }
   return {
-    challongeApiKey: process.env.CHALLONGE_API_KEY || cfg.challongeApiKey || null,
-    startggApiKey: process.env.STARTGG_API_KEY || cfg.startggApiKey || null,
+    challongeApiKey: cleanKey('challongeApiKey', process.env.CHALLONGE_API_KEY || cfg.challongeApiKey),
+    startggApiKey: cleanKey('startggApiKey', process.env.STARTGG_API_KEY || cfg.startggApiKey),
+    rosterAllowedOrigins: Array.isArray(cfg.rosterAllowedOrigins) ? cfg.rosterAllowedOrigins.map(String) : [],
   };
+}
+
+// A key is printable ASCII with no spaces. Anything else (a stray line break pasted
+// into the middle, a smart quote) is refused HERE with a message that does not quote
+// the key; otherwise the HTTP layer rejects it later and echoes the whole value.
+function cleanKey(name, value) {
+  if (value == null) return null;
+  const key = String(value).trim();
+  if (!key) return null;
+  if (!/^[\x21-\x7e]+$/.test(key)) {
+    throw new Error(`${name} contains a space, a line break or another character that cannot be part of a key. Paste it again.`);
+  }
+  return key;
 }
 
 // Fetch + normalize a tournament's participants into the roster.json shape.
 // Throws with a human-readable message on unsupported/unparseable/failed input.
+// Test hook: with TALLY_ROSTER_FIXTURES=<folder> set, "fixture:<name>" loads
+// <folder>/<name>.json ({ platform, id, participants }) instead of the network. Off
+// unless the variable is set, and the name cannot leave the folder.
+async function fixturePlatform(url) {
+  const dir = process.env.TALLY_ROSTER_FIXTURES;
+  const m = /^fixture:([a-z0-9_-]+)$/i.exec(String(url || ''));
+  if (!dir || !m) return null;
+  const data = JSON.parse(await readFile(resolve(dir, m[1] + '.json'), 'utf8'));
+  return {
+    name: data.platform || 'fixture', displayName: 'Fixture',
+    parseId: () => data.id || m[1],
+    fetchParticipants: async () => { if (data.delayMs) await new Promise((r) => setTimeout(r, data.delayMs)); return data.participants || []; },
+  };
+}
+
 export async function fetchRoster(url) {
-  const platform = detectPlatform(url);
+  const platform = (await fixturePlatform(url)) || detectPlatform(url);
   if (!platform) {
     throw new Error('Unsupported URL. Supported: ' + listSupportedPlatforms().map((p) => p.displayName).join(', '));
   }
@@ -89,7 +131,16 @@ export async function fetchOpponent(eventId, entrantId) {
   return startgg.fetchOpponent(String(eventId), String(entrantId), await loadConfig());
 }
 
+// Written to a temp file and renamed into place, so a panel that reloads during an
+// import never reads half a file.
 export async function writeRoster(roster) {
-  await writeFile(ROSTER_PATH, JSON.stringify(roster, null, 2) + '\n', 'utf8');
+  const tmp = ROSTER_PATH + '.' + process.pid + '.tmp';
+  try {
+    await writeFile(tmp, JSON.stringify(roster, null, 2) + '\n', 'utf8');
+    await rename(tmp, ROSTER_PATH);
+  } catch (err) {
+    try { await rm(tmp, { force: true }); } catch { /* nothing to clean */ }
+    throw err;
+  }
   return ROSTER_PATH;
 }
