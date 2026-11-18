@@ -10,6 +10,27 @@ traceability.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A start.gg tournament URL no longer picks an event for you.** With several events it
+  used to import the Street Fighter 6 one whenever there was exactly one, without saying
+  so, which gave a streamer running another game the wrong entrants. It now always lists
+  the events and asks for the event URL. A tournament with a single event still imports.
+- **More URL shapes are understood.** A Challonge URL with a language prefix
+  (`challonge.com/fr/mytourney`) used to import a tournament called `fr`. start.gg
+  admin-page URLs, and URLs pasted without `https://`, now work. Round.one slugs with
+  accented letters are no longer encoded twice. Challonge's own pages
+  (`/tournaments/…`, `/communities/…`) are refused with a message that says what to paste.
+- **Imported flags use the same nation table as the control panel.** The importer had a
+  second, smaller table, so entrants from Syria, Georgia, Armenia, Moldova, Kosovo and
+  others imported with no flag although the panel knew the country.
+
+### Removed
+
+- `roster/country-codes.js`, replaced by `tally-shared/nations.js`.
+
+Copy the helper files and restart the helper.
+
 ## [1.0.26] — 2026-11-18
 
 ### Security

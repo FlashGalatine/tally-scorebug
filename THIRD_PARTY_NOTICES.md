@@ -7,7 +7,7 @@ third-party material:
 
 - **StreamScoreboard** components — the `tally-themes/primetime/` theme and the
   `roster/` platform importers (Challonge, start.gg, TourneyBot, Matcherino, RoundOne,
-  and `country-codes.js`) are vendored from the author's own StreamScoreboard project.
+  and the nation table) are vendored from the author's own StreamScoreboard project.
   MIT © Ashe "Flash" Galatine — same license and author as this repository.
 
 ## Loaded at runtime from CDNs (not distributed with this repository)

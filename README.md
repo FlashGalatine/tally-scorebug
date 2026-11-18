@@ -223,6 +223,12 @@ wrong and the edit was kept: the action is missing in Streamer.bot, an older
 panel is disconnected. A yellow box appears while either action is still in Streamer.bot's
 Default queue (setup step 3).
 
+**Which URL to paste.** The bracket's own page. On start.gg use the **event** URL
+(`…/tournament/<t>/event/<e>`); a tournament URL works only when the tournament has a
+single event, and otherwise the import lists the events and asks you to pick one. Admin-page
+URLs (`…/admin/tournament/…`), Challonge URLs with a language prefix (`challonge.com/fr/…`)
+and URLs pasted without `https://` are all accepted.
+
 **Roster import (names + flags).** Paste a tournament URL in the Roster card and click
 **Import**: every entrant autocompletes, and picking a player auto-fills their flag (from
 their start.gg profile location — editable before you Set; that's the override). Picking a
