@@ -209,14 +209,18 @@ flag fields with alias resolution + live preview, score buttons,
 titles, reset/swap, and a **Teams** selector (the Player 3/4 cards appear when you
 pick 3 or 4). It drives the same `Scoreboard Command` over SB's WebSocket and
 live-reflects state, so it never fights chat or the deck. Edited-but-unset fields are
-protected from that live reflection, and **any Set click applies every edited field at
-once** (one batched `setmany` message) — so you can type both players' names and click a
-single Set.
+protected from that live reflection and shown with a yellow edge, and **any Set click
+applies every edited field at once** (one batched `setmany` message) — so you can type both
+players' names and click a single Set. **Esc** in an edited box throws the edit away and
+puts the live value back. Edits left in a Player 3/4 card are dropped when that card is
+hidden.
 
 **Roster import (names + flags).** Paste a tournament URL in the Roster card and click
 **Import**: every entrant autocompletes, and picking a player auto-fills their flag (from
-their start.gg profile location — editable before you Set; that's the override). Setting a
-name sends the flag with it *in the same message*, so one click applies both.
+their start.gg profile location — editable before you Set; that's the override). Picking a
+player who has no flag clears the flag box. Setting a name sends the flag box with it *in the
+same message* whenever the flag box was filled or edited, so one click applies both. A name
+you type that is not in the roster leaves the flag alone: set or clear the flag yourself.
 
 **Optional opponent autofill (start.gg, 2 teams).** Re-import your start.gg roster,
 then enable **Auto-fill opponent from start.gg (2 teams)** in the Roster card

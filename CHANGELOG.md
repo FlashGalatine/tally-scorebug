@@ -10,6 +10,30 @@ traceability.
 
 ## [Unreleased]
 
+### Fixed
+
+- **A roster player with no flag no longer inherits the previous player's flag.** Picking
+  or typing a roster name whose entrant has no flag now clears the flag box. Before, the
+  box kept the last player's flag and the name Set sent it along.
+- **A focused box follows changes made elsewhere.** A box left focused after pressing
+  Enter used to keep its old value for good, so a later name Set could send a stale flag.
+  Only an unsent edit is protected now, not focus.
+- **A name Set sends the flag box only when the flag box was filled or edited.** An
+  untouched flag box is no longer sent, so it cannot overwrite a flag changed from chat
+  or a Stream Deck.
+- **Typing `constructor` (or `toString`, …) as a flag no longer breaks the Set click.**
+  The nation lookup matched names every object inherits and threw.
+- **`?sbport=` and `?rosterport=` accept only a port number.** A value such as
+  `8080@other.host` used to be read as a different host.
+
+### Added
+
+- **Unsent edits are visible and can be discarded.** An edited box gets a yellow edge;
+  Esc puts the live value back. Edits left in a Player 3/4 card are dropped when the card
+  is hidden, so a later Set cannot send them unseen.
+
+Copy `tally-shared` and reload the dock and panels. No action needs re-pasting.
+
 ## [1.0.20] — 2026-11-18
 
 ### Changed

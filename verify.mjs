@@ -405,6 +405,31 @@ async function main() {
     check("resolver: bare ISO 'fr' → 🇫🇷", globalThis.Nations.resolveFlag('fr') === '\u{1F1EB}\u{1F1F7}');
     check('resolver: emoji passthrough', globalThis.Nations.resolveFlag(GB) === GB);
     check("resolver: 'florpland' → null", globalThis.Nations.resolveFlag('florpland') === null);
+    // Names every plain object inherits must be unknown nations, not a crash (TAL-08).
+    for (const word of ['constructor', 'toString', '__proto__', 'hasOwnProperty', 'valueOf']) {
+      let got; try { got = globalThis.Nations.resolveFlag(word); } catch (e) { got = 'THREW ' + e.message; }
+      check(`resolver: '${word}' → null (no throw)`, got === null, String(got));
+    }
+
+    // ── 4b. ?sbport must be a plain port number (TAL-18) ─────────────────────────
+    console.log('\n[4b] panel-core: ?sbport is validated');
+    const shimSrc = await readFile(SHIM_PATH, 'utf8');
+    const dialled = (search) => {
+      let url = null;
+      class FakeWS { constructor(u) { url = u; } send() {} }
+      FakeWS.OPEN = 1;
+      const win = { addEventListener() {}, dispatchEvent() {} };
+      const doc = { readyState: 'complete', body: { classList: { toggle() {} } }, addEventListener() {} };
+      new Function('window', 'document', 'location', 'WebSocket', 'CustomEvent', 'setTimeout', 'clearTimeout', 'URLSearchParams', 'console', shimSrc)(
+        win, doc, { search }, FakeWS, class {}, () => 0, () => {}, URLSearchParams, console);
+      return url;
+    };
+    check('?sbport=9090 → ws://127.0.0.1:9090/', dialled('?sbport=9090') === 'ws://127.0.0.1:9090/', dialled('?sbport=9090'));
+    check('no sbport → the default port 8080', dialled('') === 'ws://127.0.0.1:8080/');
+    for (const bad of ['8080@evil.example', '8080/x', 'abc', '99999', '0', '80 80']) {
+      const u = dialled('?sbport=' + encodeURIComponent(bad));
+      check(`?sbport=${bad} is ignored (default port, local host)`, u === 'ws://127.0.0.1:8080/', u);
+    }
 
     // ── 5. Roster helper: CORS + input validation (no external network) ─────────
     console.log('\n[5] roster helper: starts, CORS, rejects bad input');

@@ -299,6 +299,7 @@ async function main() {
     await p3Page.close();
 
     await verifyOpponentAutofill(browser);
+    await verifyFlagBox(browser);
 
     await stripPage.screenshot({ path: resolve(__dirname, 'test-render.png') });
     await ctrlPage.screenshot({ path: resolve(__dirname, 'control-render.png') });
@@ -491,6 +492,113 @@ async function verifyOpponentAutofill(browser) {
   check('old start.gg rosters prompt re-import and cannot guess identity', await p.isDisabled('#autoOpponent') && /re-import/.test(await p.textContent('#opponentInfo')));
   check('opponent flow raises no browser script errors', errors.length === 0, errors.join('; '));
   await p.close();
+}
+
+// Sprint 2: the flag box always matches what a Set will send (TAL-01, 02, 08, 17, 18).
+async function verifyFlagBox(browser) {
+  console.log('\n  flag box and unsent edits');
+  const JP = '\u{1F1EF}\u{1F1F5}', GB = '\u{1F1EC}\u{1F1E7}';
+  const p = await browser.newPage({ viewport: { width: 420, height: 900 } });
+  const errors = [];
+  p.on('pageerror', (err) => errors.push(err.message));
+  await p.route('**/tally-shared/roster.json', (route) => route.fulfill({ json: {
+    tournament: 'sample-cup', platform: 'sample',
+    players: [{ name: 'Vamp Fatale', flag: JP }, { name: 'Wicked Thunder', flag: null }, { name: 'The Tyrant', flag: GB }],
+  } }));
+  await p.addInitScript(() => {
+    window.__sent = [];
+    const send = WebSocket.prototype.send;
+    WebSocket.prototype.send = function (data) { try { window.__sent.push(JSON.parse(data)); } catch {} return send.call(this, data); };
+  });
+  const mockState = async () => (await (await fetch(`${BASE}/mock/stats`)).json()).state;
+  const mockUntil = async (pred) => { let st; for (const until = Date.now() + 4000; Date.now() < until;) { st = await mockState(); if (pred(st)) return st; await p.waitForTimeout(25); } return st; };
+  const cmds = () => p.evaluate(() => window.__sent.filter((m) => m.action && m.action.name === 'Scoreboard Command').map((m) => m.args));
+  const clearSent = () => p.evaluate(() => { window.__sent.length = 0; });
+  const waitFor = (fn, arg) => p.waitForFunction(fn, arg, { timeout: 4000 }).then(() => true).catch(() => false);
+  async function fresh() {
+    await fetch(`${BASE}/mock/cmd?command=teams&value=2`);
+    await fetch(`${BASE}/mock/cmd?command=setmany&p1name=Vamp%20Fatale&p1flag=jp&p2name=The%20Tyrant&p2flag=gb&header=Cup&subheader=FT2`);
+    await p.goto(`${BASE}/tally-shared/control.html?sbport=${WS_PORT}`);
+    await p.waitForFunction((jp) => document.getElementById('rosterInfo').textContent.includes('3 players')
+      && document.getElementById('p1name').value === 'Vamp Fatale' && document.getElementById('p1flag').value === jp, JP);
+    await clearSent();
+  }
+
+  // TAL-01: a roster player with no flag must not inherit the previous player's flag.
+  await fresh();
+  await p.fill('#p1name', 'Wicked Thunder');
+  check('picking a roster player with no flag clears the flag box',
+    await waitFor(() => document.getElementById('p1flag').value === '' && document.getElementById('p1flagprev').textContent === '\u2014'),
+    await p.inputValue('#p1flag'));
+  await p.click('button[data-set="p1name"]');
+  const st1 = await mockUntil((s) => s.p1name === 'Wicked Thunder');
+  check('…and the Set removes the old flag on stream', st1.p1name === 'Wicked Thunder' && st1.p1flag === '', JSON.stringify({ n: st1.p1name, f: st1.p1flag }));
+
+  // TAL-02: a focused, unedited box follows a change made elsewhere.
+  await fresh();
+  await p.click('#p1flag'); // focus it, type nothing
+  await fetch(`${BASE}/mock/cmd?command=swap`);
+  check('a focused but unedited flag box follows a swap made elsewhere',
+    await waitFor((gb) => document.activeElement.id === 'p1flag' && document.getElementById('p1flag').value === gb, GB),
+    await p.inputValue('#p1flag'));
+  // …and a name Set for a non-roster name does not send the flag box at all.
+  await p.fill('#p1name', 'Walk-in Player');
+  await clearSent();
+  await p.click('button[data-set="p1name"]');
+  const st2 = await mockUntil((s) => s.p1name === 'Walk-in Player');
+  const sent2 = await cmds();
+  check('a name Set with an untouched flag box sends the name alone',
+    sent2.length === 1 && sent2[0].command === 'p1name' && !('flag' in sent2[0]), JSON.stringify(sent2));
+  check('…so the flag on stream is left as it was', st2.p1flag === GB, JSON.stringify(st2.p1flag));
+
+  // TAL-08: a word every object inherits is just an unknown nation.
+  await fresh();
+  await p.fill('#p1flag', 'constructor');
+  check("typing 'constructor' as a flag shows the unknown marker, no script error",
+    await waitFor(() => document.getElementById('p1flagprev').textContent === '?') && errors.length === 0, errors.join('; '));
+  await p.fill('#p2name', 'Also Edited');
+  await clearSent();
+  await p.click('button[data-set="p1flag"]');
+  const sent3 = await cmds();
+  check('…and Set still sends, carrying the other edited field too',
+    sent3.length === 1 && sent3[0].command === 'setmany' && sent3[0].p1flag === 'constructor' && sent3[0].p2name === 'Also Edited', JSON.stringify(sent3));
+
+  // TAL-17: unsent edits are visible, Esc discards one, a hidden card keeps none.
+  await fresh();
+  await p.fill('#header', 'Half typed');
+  check('an edited box is marked dirty', await p.evaluate(() => document.getElementById('header').classList.contains('dirty')));
+  await p.press('#header', 'Escape');
+  check('Esc puts the live value back and clears the mark',
+    await p.inputValue('#header') === 'Cup' && !await p.evaluate(() => document.getElementById('header').classList.contains('dirty')), await p.inputValue('#header'));
+  await p.click('button[data-teams="3"]');
+  await p.waitForFunction(() => !document.getElementById('card-p3').classList.contains('hide'));
+  await p.fill('#p3name', 'Ghost Entry');
+  await p.click('button[data-teams="2"]');
+  await p.waitForFunction(() => document.getElementById('card-p3').classList.contains('hide'));
+  await p.fill('#subheader', 'Grand Finals');
+  await clearSent();
+  await p.click('button[data-set="subheader"]');
+  const sent4 = await cmds();
+  check('an edit left in a card that was then hidden is not sent by a later Set',
+    sent4.length === 1 && sent4[0].command === 'subheader' && sent4[0].value === 'Grand Finals', JSON.stringify(sent4));
+  const st4 = await mockUntil((s) => s.subheader === 'Grand Finals');
+  check('…and never reaches the scoreboard', st4.p3name !== 'Ghost Entry', st4.p3name);
+  await p.close();
+
+  // TAL-18: a port parameter that is not a plain number is ignored. The page's
+  // WebSocket is replaced by a recorder so nothing is dialled.
+  const q = await browser.newPage();
+  await q.route('**/tally-shared/roster.json', (route) => route.fulfill({ json: { players: [] } }));
+  await q.addInitScript(() => {
+    window.__dialled = [];
+    window.WebSocket = function (url) { window.__dialled.push(String(url)); this.readyState = 0; this.send = function () {}; this.close = function () {}; };
+  });
+  await q.goto(`${BASE}/tally-shared/control.html?sbport=${encodeURIComponent('8082@evil.example')}&rosterport=${encodeURIComponent('7481@evil.example')}`);
+  const dialled = await q.evaluate(() => window.__dialled);
+  check('control panel ignores ?sbport=8082@evil.example (default port, local host)',
+    dialled.length === 1 && dialled[0] === 'ws://127.0.0.1:8080/', JSON.stringify(dialled));
+  await q.close();
+  check('flag-box flow raises no browser script errors', errors.length === 0, errors.join('; '));
 }
 
 main();
