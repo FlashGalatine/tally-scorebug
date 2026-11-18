@@ -10,6 +10,8 @@ traceability.
 
 ## [Unreleased]
 
+## [1.0.32] — 2026-11-18
+
 ### Changed
 
 - **A score or team count that is not a whole number is rejected.** `!sb p1score 1o`,
@@ -373,6 +375,7 @@ Initial release — Streamer.bot-native tournament scorebug for OBS. (`d90adf2`)
 Primetime theme and roster scrapers vendored from StreamScoreboard (same
 author, MIT).
 
+[1.0.32]: https://github.com/FlashGalatine/tally-scorebug/compare/v1.0.30...v1.0.32
 [1.0.30]: https://github.com/FlashGalatine/tally-scorebug/compare/v1.0.28...v1.0.30
 [1.0.28]: https://github.com/FlashGalatine/tally-scorebug/compare/v1.0.26...v1.0.28
 [1.0.26]: https://github.com/FlashGalatine/tally-scorebug/compare/v1.0.24...v1.0.26
