@@ -10,6 +10,8 @@ traceability.
 
 ## [Unreleased]
 
+## [1.0.16] — 2026-11-18
+
 ### Added
 
 - **Optional start.gg opponent autofill.** In 2-team mode, enable the Roster
@@ -151,4 +153,5 @@ Initial release — Streamer.bot-native tournament scorebug for OBS. (`d90adf2`)
 Primetime theme and roster scrapers vendored from StreamScoreboard (same
 author, MIT).
 
-[1.0.10]: https://github.com/FlashGalatine/tally-scorebug/compare/d90adf2...main
+[1.0.16]: https://github.com/FlashGalatine/tally-scorebug/compare/f264150...v1.0.16
+[1.0.10]: https://github.com/FlashGalatine/tally-scorebug/compare/d90adf2...f264150
