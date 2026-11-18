@@ -10,6 +10,8 @@ traceability.
 
 ## [Unreleased]
 
+## [1.0.34] — 2026-11-18
+
 ### Fixed
 
 - **Opponent autofill prefers a called set.** In a round-robin pool every pending set
@@ -396,6 +398,7 @@ Initial release — Streamer.bot-native tournament scorebug for OBS. (`d90adf2`)
 Primetime theme and roster scrapers vendored from StreamScoreboard (same
 author, MIT).
 
+[1.0.34]: https://github.com/FlashGalatine/tally-scorebug/compare/v1.0.32...v1.0.34
 [1.0.32]: https://github.com/FlashGalatine/tally-scorebug/compare/v1.0.30...v1.0.32
 [1.0.30]: https://github.com/FlashGalatine/tally-scorebug/compare/v1.0.28...v1.0.30
 [1.0.28]: https://github.com/FlashGalatine/tally-scorebug/compare/v1.0.26...v1.0.28
