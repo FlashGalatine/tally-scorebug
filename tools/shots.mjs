@@ -10,7 +10,7 @@
 import { spawn } from 'node:child_process';
 import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright-core';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -49,8 +49,11 @@ async function settle(page) {
   await page.waitForTimeout(900);
 }
 
-async function shot(browser, url, w, h, out) {
+// `roster`, when given, is served to the page in place of tally-shared/roster.json.
+// The real file is never written, so an operator's imported roster is left alone.
+async function shot(browser, url, w, h, out, roster) {
   const page = await browser.newPage({ viewport: { width: w, height: h }, deviceScaleFactor: 2 });
+  if (roster) await page.route('**/tally-shared/roster.json', (route) => route.fulfill({ json: roster }));
   await page.goto(url, { waitUntil: 'load' });
   await settle(page);
   await page.screenshot({ path: resolve(DOCS, out) });
@@ -61,7 +64,6 @@ async function shot(browser, url, w, h, out) {
 async function main() {
   await mkdir(DOCS, { recursive: true });
   let mock, browser;
-  const rosterPath = resolve(ROOT, 'tally-shared', 'roster.json');
   try {
     mock = await startMock();
     browser = await launch();
@@ -77,7 +79,7 @@ async function main() {
     await cmd('p2score', '10');
 
     // Sample roster so the control panel shows the autocomplete state.
-    await writeFile(rosterPath, JSON.stringify({
+    const sampleRoster = {
       tournament: 'solution-to-sunday', platform: 'startgg',
       players: [
         { name: 'Blanka-chan', flag: '\u{1F1E7}\u{1F1F7}' },
@@ -86,16 +88,15 @@ async function main() {
         { name: 'Wicked Thunder', flag: '\u{1F1FA}\u{1F1F8}' },
       ],
       names: ['Blanka-chan', 'FGC | Vamp Fatale', 'NFC | The Tyrant', 'Wicked Thunder'],
-    }));
+    };
 
     console.log('capturing…');
     await shot(browser, `${BASE}/tally-themes/primetime/panels/title-309x49.html?sbport=${WS_PORT}`, 309, 49, 'primetime-title.png');
     await shot(browser, `${BASE}/tally-themes/primetime/panels/player1-strip-545x63.html?sbport=${WS_PORT}`, 545, 63, 'primetime-strip-p1.png');
     await shot(browser, `${BASE}/tally-themes/primetime/panels/player2-strip-545x63.html?sbport=${WS_PORT}`, 545, 63, 'primetime-strip-p2.png');
-    await shot(browser, `${BASE}/tally-shared/control.html?sbport=${WS_PORT}`, 420, 780, 'control-panel.png');
+    await shot(browser, `${BASE}/tally-shared/control.html?sbport=${WS_PORT}`, 420, 780, 'control-panel.png', sampleRoster);
     console.log('done.');
   } finally {
-    try { await rm(rosterPath); } catch {}
     if (browser) { try { await browser.close(); } catch {} }
     if (mock) mock.kill();
   }

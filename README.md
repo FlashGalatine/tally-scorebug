@@ -271,6 +271,15 @@ reset, `x` swap) or `GET /mock/cmd?command=p1+`. `npm run verify:render` (needs
 offline start.gg fixtures; `verify:render` also covers the two-slot autofill flow,
 manual overrides, and late lookup responses.
 
+The mock answers the way Streamer.bot 1.0.7 was measured to: an unknown action name gets
+the "was not found" error reply, a known one gets an `ok` reply at once that echoes its
+arguments and names its queue, a rejected command broadcasts nothing, and numbers parse
+as the C# parses them. By default it behaves like a blocking queue. `GET /mock/bleed?on=1`
+(or `MOCK_ARG_BLEED=1`) switches it to the default-queue behaviour, where same-action
+requests that arrive together all run with the last one's arguments;
+`GET /mock/stats` shows the runs it has made. The suites and `npm run shots` never write
+`tally-shared/roster.json`, so they are safe to run beside an imported roster.
+
 ## Troubleshooting
 
 - **Chat command does nothing** → the command isn't a **trigger** on `Scoreboard Command`

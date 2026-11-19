@@ -10,6 +10,35 @@ traceability.
 
 ## [Unreleased]
 
+## [1.0.20] — 2026-11-18
+
+### Changed
+
+- **The mock now answers like Streamer.bot.** Development only; nothing deploys. An
+  unknown action name gets SB's "was not found" error reply instead of `ok`. A known
+  one gets `ok` at once with its arguments echoed and its queue named, as measured on
+  1.0.7. A rejected command (unknown nation, unknown command, empty `setmany`) no
+  longer sends state back to the sender. `Scoreboard Push` broadcasts to every
+  subscriber. Numbers parse as C# `int.TryParse` does (`5.5` and `12abc` are rejected,
+  where JS `parseInt` accepted them), single-field values are trimmed, and the three
+  chat calling styles are mirrored.
+- **Arg-bleed mode.** `GET /mock/bleed?on=1` or `MOCK_ARG_BLEED=1` makes same-action
+  requests that arrive together all run with the last one's arguments, which is what
+  SB's default queue does. `GET /mock/stats` reports the runs. `verify` proves the mode
+  loses the first of two back-to-back commands, from one socket and from two;
+  `verify:render` proves one Set click still applies both players with it on.
+
+### Fixed
+
+- **The test tools no longer touch `tally-shared/roster.json`.** `npm run shots` used
+  to overwrite the file with a sample and then delete it, and an interrupted
+  `verify:render` left the sample in place. Both now serve their sample roster by
+  intercepting the page's request.
+- **Checks that could not fail.** The "dispatched on connect" check now tests the
+  payload, and the opponent-lookup tests wait for the held response to be delivered
+  instead of sleeping 100 ms. A malformed percent-escape in a request path no longer
+  crashes the mock. `verify` 82/82, `verify:opponent` 22/22, `verify:render` 51/51.
+
 ## [1.0.18] — 2026-11-18
 
 ### Documentation
@@ -167,6 +196,7 @@ Initial release — Streamer.bot-native tournament scorebug for OBS. (`d90adf2`)
 Primetime theme and roster scrapers vendored from StreamScoreboard (same
 author, MIT).
 
+[1.0.20]: https://github.com/FlashGalatine/tally-scorebug/compare/v1.0.18...v1.0.20
 [1.0.18]: https://github.com/FlashGalatine/tally-scorebug/compare/v1.0.16...v1.0.18
 [1.0.16]: https://github.com/FlashGalatine/tally-scorebug/compare/f264150...v1.0.16
 [1.0.10]: https://github.com/FlashGalatine/tally-scorebug/compare/d90adf2...f264150
