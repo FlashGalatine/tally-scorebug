@@ -215,6 +215,14 @@ players' names and click a single Set. **Esc** in an edited box throws the edit 
 puts the live value back. Edits left in a Player 3/4 card are dropped when that card is
 hidden.
 
+The panel sends one command at a time and waits for the scoreboard to confirm it before
+sending the next, so quick clicks cannot overtake each other. An edit keeps its yellow edge
+until its Set is confirmed. A line under the connection status says when something went
+wrong and the edit was kept: the action is missing in Streamer.bot, an older
+`Scoreboard Command` did not understand the request, a nation was not recognised, or the
+panel is disconnected. A yellow box appears while either action is still in Streamer.bot's
+Default queue (setup step 3).
+
 **Roster import (names + flags).** Paste a tournament URL in the Roster card and click
 **Import**: every entrant autocompletes, and picking a player auto-fills their flag (from
 their start.gg profile location — editable before you Set; that's the override). Picking a
@@ -303,6 +311,12 @@ requests that arrive together all run with the last one's arguments;
   Move `Scoreboard Push` and `Scoreboard Command` into one blocking queue (setup step 3).
   SB → Logs shows the tell: two `[Scoreboard Command] token=…` lines with the same token
   where you sent two different commands.
+- **Control panel shows "No update came back for …"** → the command was sent but the
+  scoreboard never answered. For `setmany`, the pasted `Scoreboard Command` is an older
+  copy: re-paste [`actions/scoreboard-command.cs`](actions/scoreboard-command.cs). Otherwise
+  check SB → Logs for a `[Scoreboard Command]` warning. Your edits stay in their boxes.
+- **Control panel shows "The action '…' was not found"** → the action is not imported,
+  or its name differs from `Scoreboard Command` / `Scoreboard Push` exactly.
 - **Control panel: clicking Set on a name snaps the box back to the old name** (while the
   same edit works from chat) → first check the blocking queue above. If that is set, you're
   on an older `control.html` + `Scoreboard Command`

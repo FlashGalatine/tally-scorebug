@@ -300,6 +300,7 @@ async function main() {
 
     await verifyOpponentAutofill(browser);
     await verifyFlagBox(browser);
+    await verifySendQueue(browser);
 
     await stripPage.screenshot({ path: resolve(__dirname, 'test-render.png') });
     await ctrlPage.screenshot({ path: resolve(__dirname, 'control-render.png') });
@@ -560,8 +561,11 @@ async function verifyFlagBox(browser) {
   await clearSent();
   await p.click('button[data-set="p1flag"]');
   const sent3 = await cmds();
-  check('…and Set still sends, carrying the other edited field too',
-    sent3.length === 1 && sent3[0].command === 'setmany' && sent3[0].p1flag === 'constructor' && sent3[0].p2name === 'Also Edited', JSON.stringify(sent3));
+  check('…and Set sends the other edited field, holding the unknown nation back',
+    sent3.length === 1 && sent3[0].command === 'p2name' && sent3[0].value === 'Also Edited', JSON.stringify(sent3));
+  check('…the unknown nation stays in its box, marked, and is named in the notice',
+    await p.inputValue('#p1flag') === 'constructor' && await p.evaluate(() => document.getElementById('p1flag').classList.contains('dirty'))
+    && /Unknown nation.*Player 1/.test(await p.textContent('#notice')), await p.textContent('#notice'));
 
   // TAL-17: unsent edits are visible, Esc discards one, a hidden card keeps none.
   await fresh();
@@ -599,6 +603,124 @@ async function verifyFlagBox(browser) {
     dialled.length === 1 && dialled[0] === 'ws://127.0.0.1:8080/', JSON.stringify(dialled));
   await q.close();
   check('flag-box flow raises no browser script errors', errors.length === 0, errors.join('; '));
+}
+
+// Sprint 3: one send in flight, replies read, failures shown (TAL-05, page half of TAL-09).
+async function verifySendQueue(browser) {
+  console.log('\n  send queue and failure display');
+  const GB = '\u{1F1EC}\u{1F1E7}';
+  const p = await browser.newPage({ viewport: { width: 420, height: 900 } });
+  const errors = [];
+  p.on('pageerror', (err) => errors.push(err.message));
+  await p.route('**/tally-shared/roster.json', (route) => route.fulfill({ json: { players: [] } }));
+  await p.addInitScript(() => {
+    window.__sent = [];
+    const send = WebSocket.prototype.send;
+    WebSocket.prototype.send = function (data) { window.__socket = this; try { window.__sent.push(JSON.parse(data)); } catch {} return send.call(this, data); };
+  });
+  const mock = (path) => fetch(`${BASE}${path}`).then((r) => r.json());
+  const mockUntil = async (pred) => { let st; for (const until = Date.now() + 4000; Date.now() < until;) { st = (await mock('/mock/stats')).state; if (pred(st)) return st; await p.waitForTimeout(25); } return st; };
+  const cmds = () => p.evaluate(() => window.__sent.filter((m) => m.action && m.action.name === 'Scoreboard Command').map((m) => m.args));
+  const clearSent = () => p.evaluate(() => { window.__sent.length = 0; });
+  const waitFor = (fn, arg) => p.waitForFunction(fn, arg, { timeout: 4000 }).then(() => true).catch(() => false);
+  const isDirty = (id) => p.evaluate((i) => document.getElementById(i).classList.contains('dirty'), id);
+  const notice = () => p.textContent('#notice');
+  async function fresh() {
+    await mock('/mock/bleed?on=0'); await mock('/mock/oldcs?on=0');
+    await mock('/mock/missing?name=Scoreboard%20Command&on=0');
+    await mock('/mock/cmd?command=teams&value=2');
+    await mock('/mock/cmd?command=setmany&p1name=Left&p1flag=none&p2name=Right&p2flag=none&header=Cup&subheader=FT2');
+    await mock('/mock/cmd?command=reset');
+    await p.goto(`${BASE}/tally-shared/control.html?sbport=${WS_PORT}`);
+    await p.waitForFunction(() => document.getElementById('p1name').value === 'Left' && document.getElementById('dot').classList.contains('on'));
+    await clearSent();
+  }
+
+  // Success settles the edit: the mark goes and the box shows the live value.
+  await fresh();
+  await p.fill('#p1flag', 'uk');
+  await p.click('button[data-set="p1flag"]');
+  check('after a Set is confirmed the box shows the live value and is no longer marked',
+    await waitFor((gb) => document.getElementById('p1flag').value === gb && !document.getElementById('p1flag').classList.contains('dirty'), GB),
+    await p.inputValue('#p1flag'));
+
+  // Arg-bleed on (Streamer.bot's default queue): two different clicks in the same
+  // instant must both land. Without the queue both run as the second one.
+  await fresh(); await mock('/mock/bleed?on=1');
+  await p.evaluate(() => { document.querySelector('button[data-cmd="p1+"]').click(); document.querySelector('button[data-cmd="p2+"]').click(); });
+  const st1 = await mockUntil((st) => st.p1score === 1 && st.p2score === 1);
+  check('arg-bleed on: two score clicks in the same instant both land', st1.p1score === 1 && st1.p2score === 1, JSON.stringify({ p1: st1.p1score, p2: st1.p2score }));
+  check('the panel warns that the action is in the Default queue',
+    await waitFor(() => !document.getElementById('queueWarn').hidden && /blocking queue/.test(document.getElementById('queueWarn').textContent)),
+    await p.textContent('#queueWarn'));
+
+  // A held Enter repeats the key about every 30 ms. It must send the Set once.
+  await p.fill('#p1name', 'Held One');
+  await p.fill('#p2name', 'Held Two');
+  await p.focus('#p1name');
+  await clearSent();
+  await p.keyboard.down('Enter'); await p.keyboard.down('Enter'); await p.keyboard.down('Enter'); await p.keyboard.down('Enter');
+  await p.keyboard.up('Enter');
+  const st2 = await mockUntil((st) => st.p1name === 'Held One' && st.p2name === 'Held Two');
+  const sent2 = await cmds();
+  check('arg-bleed on: a held Enter sends the Set once and both names land',
+    sent2.length === 1 && sent2[0].command === 'setmany' && st2.p1name === 'Held One' && st2.p2name === 'Held Two',
+    JSON.stringify({ sent: sent2.map((a) => a.command), p1: st2.p1name, p2: st2.p2name }));
+  await mock('/mock/bleed?on=0');
+  await p.click('button[data-cmd="p1+"]');
+  check('the queue warning clears once the action answers from another queue', await waitFor(() => document.getElementById('queueWarn').hidden));
+
+  // The action is missing in Streamer.bot: say so and keep the edit.
+  await fresh(); await mock('/mock/missing?name=Scoreboard%20Command&on=1');
+  await p.fill('#header', 'Typed Title');
+  await p.click('button[data-set="header"]');
+  check('a missing action is reported in the panel',
+    await waitFor(() => /was not found/.test(document.getElementById('notice').textContent)), await notice());
+  check('…and the edit stays in its box, still marked', await p.inputValue('#header') === 'Typed Title' && await isDirty('header'));
+  await mock('/mock/missing?name=Scoreboard%20Command&on=0');
+  await p.click('button[data-set="header"]');
+  const st3 = await mockUntil((st) => st.header === 'Typed Title');
+  check('…so one more Set applies it once the action is back', st3.header === 'Typed Title' && await waitFor(() => !document.getElementById('header').classList.contains('dirty') && document.getElementById('notice').textContent === ''), await notice());
+
+  // An older pasted Scoreboard Command that does not know setmany: nothing comes back.
+  await fresh(); await mock('/mock/oldcs?on=1');
+  await p.fill('#p1name', 'New Left');
+  await p.fill('#p2name', 'New Right');
+  await p.click('button[data-set="p1name"]');
+  check('an older Scoreboard Command (no setmany) is reported, with what to do',
+    await waitFor(() => /re-paste/.test(document.getElementById('notice').textContent)), await notice());
+  check('…and both edits stay in their boxes, still marked',
+    await p.inputValue('#p1name') === 'New Left' && await p.inputValue('#p2name') === 'New Right' && await isDirty('p1name') && await isDirty('p2name'));
+  await mock('/mock/oldcs?on=0');
+
+  // A scoreboard:error broadcast is shown.
+  await fresh();
+  await mock('/mock/error?message=' + encodeURIComponent('Object reference not set'));
+  check('a scoreboard:error broadcast is shown in the panel',
+    await waitFor(() => /Object reference not set/.test(document.getElementById('notice').textContent)), await notice());
+
+  // A double click on Set is one request.
+  await fresh();
+  await p.fill('#subheader', 'Top 8');
+  await p.evaluate(() => { const b = document.querySelector('button[data-set="subheader"]'); b.click(); b.click(); });
+  await mockUntil((st) => st.subheader === 'Top 8');
+  const sent5 = await cmds();
+  check('a double click on Set sends one request', sent5.length === 1, JSON.stringify(sent5));
+
+  // Disconnected: the click is refused out loud, and the team count is not assumed.
+  await fresh();
+  await p.evaluate(() => window.__socket.close());
+  await p.waitForFunction(() => document.getElementById('statusText').textContent.includes('disconnected'));
+  await clearSent();
+  await p.click('button[data-cmd="p1+"]');
+  check('a click while disconnected says it was not sent', /not sent/.test(await notice()), await notice());
+  await p.click('button[data-teams="3"]');
+  check('…and a team-count click while disconnected changes nothing in the panel',
+    await p.evaluate(() => !document.getElementById('autoOpponent').closest('.card').textContent.includes('available with 2 teams')) && (await cmds()).length === 0,
+    await p.textContent('#opponentInfo'));
+
+  check('send-queue flow raises no browser script errors', errors.length === 0, errors.join('; '));
+  await p.close();
 }
 
 main();

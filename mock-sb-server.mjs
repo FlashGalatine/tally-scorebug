@@ -135,6 +135,7 @@ function applyCommand(args) {
     case 'header': state.header = val; break;
     case 'subheader': state.subheader = val; break;
     case 'setmany': { // mirror of the C# SetMany(): apply every present field, bad flags skip
+      if (oldCs) return false; // an older pasted action: unknown command, no push
       const a = extra || {};
       let any = false;
       for (let i = 1; i <= 4; i++) {
@@ -249,6 +250,29 @@ const http = createServer(async (req, res) => {
     res.end(JSON.stringify({ argBleed }));
     return;
   }
+  // /mock/missing?name=<action>&on=1|0  pretend an action is not imported.
+  // /mock/oldcs?on=1|0                   pretend Scoreboard Command predates `setmany`.
+  // /mock/error?message=…                broadcast a scoreboard:error, as the Push action does on an exception.
+  if (path === '/mock/missing') {
+    const name = query.get('name') || '';
+    if (query.get('on') === '1') missingActions.add(name); else missingActions.delete(name);
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ missing: [...missingActions] }));
+    return;
+  }
+  if (path === '/mock/oldcs') {
+    if (query.has('on')) oldCs = query.get('on') === '1';
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ oldCs }));
+    return;
+  }
+  if (path === '/mock/error') {
+    const msg = customEvent({ type: 'scoreboard:error', message: query.get('message') || 'mock error' });
+    for (const ws of clients) { if (ws.subscribedCustom) { try { ws.send(msg); } catch {} } }
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end('{"ok":true}');
+    return;
+  }
   if (path === '/mock/stats') {
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ argBleed, totalRuns, totalBroadcasts, runs: runLog.slice(-50), state }));
@@ -303,7 +327,7 @@ wss.on('connection', (ws) => {
       // Measured on Streamer.bot 1.0.7: an action that does not exist gets an error
       // reply; one that exists gets "ok" AT ONCE, when it is queued (not when it has
       // run), echoing the request's own args plus the queue it was put in.
-      if (!ACTIONS.has(name)) {
+      if (!ACTIONS.has(name) || missingActions.has(name)) {
         ws.send(JSON.stringify({ id: m.id, status: 'error', error: `The action '${name}' was not found` }));
         return;
       }
@@ -331,6 +355,8 @@ wss.on('listening', () => console.log(`[mock] WS    ws://127.0.0.1:${WS_PORT}  (
 const ACTIONS = new Set(['Scoreboard Command', 'Scoreboard Push']);
 const BLEED_WINDOW_MS = 15;
 let argBleed = process.env.MOCK_ARG_BLEED === '1';
+let oldCs = false;                 // true: Scoreboard Command does not know `setmany`
+const missingActions = new Set();  // action names to answer "was not found" for
 const pendingByAction = new Map(); // name → [{ args }]
 const runLog = [];                 // [{ action, token, bled }] newest last
 let totalRuns = 0, totalBroadcasts = 0;
