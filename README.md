@@ -22,7 +22,7 @@ flag. Made for FGC / esports streams that run fast matches and don't want to alt
 | **State** | a handful of Streamer.bot global variables (persist across restarts) |
 | **Control** | chat commands, Stream Deck, hotkeys, and `tally-shared/control.html` |
 | **Roster** | import a bracket (start.gg, Challonge, TourneyBot, Matcherino, RoundOne) → name autocomplete + flag autofill |
-| **Needs** | Streamer.bot (tested on 1.0.4) + a streaming app with a browser source (see below). Node.js 18+ only for the roster import and the local no-SB mock — the scorebug itself runs on Streamer.bot alone |
+| **Needs** | Streamer.bot (tested on 1.0.4 and 1.0.7) + a streaming app with a browser source (see below). Node.js 18+ only for the roster import and the local no-SB mock — the scorebug itself runs on Streamer.bot alone |
 
 **Works with any streaming software whose browser source is Chromium-based (≥ 80, i.e.
 anything from 2020 on):** the panels are plain web pages loaded from
@@ -69,6 +69,16 @@ or click **<> Code → Download ZIP** on the repo page and extract it. The
    [`actions/scoreboard-command.cs`](actions/scoreboard-command.cs). Both compile with **no
    added references**. (The names matter: panels request `Scoreboard Push` on connect, and
    `Scoreboard Command` runs it by name.)
+
+   **Put both actions in one blocking queue.** In Streamer.bot's action queues, add a
+   queue (call it `Tally`) with **Blocking** turned on, then set that queue on both
+   `Scoreboard Push` and `Scoreboard Command`. Do not leave them in the default queue.
+   In the default queue Streamer.bot can run two requests for the same action at once,
+   and when it does, both runs see one request's arguments and the other command is lost.
+   A blocking queue runs them one at a time, in the order they arrived. Measured on
+   Streamer.bot 1.0.7: two back-to-back commands mixed their arguments in 25 of 25 tries
+   in the default queue, and in 0 of 25 in a blocking queue, whether they came from one
+   client or two. This covers the control panel, chat and Stream Deck together.
 4. **Your streaming app** — add a Browser Source (OBS/Streamlabs) or Webpage source
    (XSplit) per panel, at its native size:
 
@@ -118,9 +128,11 @@ drive the extra slots of teams mode.
 
 There is one optional extra argument: alongside `command=pNname` you may pass **`flag`**,
 and that player's name and nation are applied in a single invocation. The control panel
-uses it so one **Set** click sends exactly one `DoAction` — Streamer.bot 1.0.4 bleeds the
-arguments of two `DoAction`s that reach the same action within a few milliseconds, so a
-burst silently loses one of them. Chat and Stream Deck never need it.
+uses it so one **Set** click sends exactly one `DoAction` — Streamer.bot (seen on 1.0.4
+and 1.0.7) mixes the arguments of two `DoAction`s whose runs of the same action overlap,
+so a burst silently loses one of them. Chat and Stream Deck never need it. The blocking
+queue in setup step 3 is what stops the overlap; one call per click keeps the panel safe
+on installs that have not set it.
 
 For the same reason there is a batched command, **`setmany`**: each sibling argument
 present among `p1name`…`p4name`, `p1flag`…`p4flag`, `header`, `subheader` is applied in
@@ -267,16 +279,22 @@ manual overrides, and late lookup responses.
 - **Panels blank** → state never arrived over the WS. Check the WS Server is on `:8080`
   with auth off (or that every panel URL carries a matching `?sbport=`, if you moved it),
   and that the action is named exactly `Scoreboard Push` and **compiles**
-  (`DoAction` returning ok only means the action *started* — a compile error broadcasts
+  (`DoAction` returning ok only means the action was *queued* — a compile error broadcasts
   nothing). On error the actions broadcast `{ type:'scoreboard:error', message }`.
 - **`Uri`/`Process`/`Newtonsoft` "does not exist" when writing your own actions** → SB
   (a .NET Framework 4.7.2 app) resolves a minimal default reference set. Add `System.dll`
   (or SB's own `Newtonsoft.Json.dll`) in the C# editor's **References** tab. Tally's two
   scoreboard actions need no references on purpose.
+- **A command is lost when two arrive together** (a panel click with a chat command or a
+  Stream Deck press, or two quick presses) → the actions are still in the default queue.
+  Move `Scoreboard Push` and `Scoreboard Command` into one blocking queue (setup step 3).
+  SB → Logs shows the tell: two `[Scoreboard Command] token=…` lines with the same token
+  where you sent two different commands.
 - **Control panel: clicking Set on a name snaps the box back to the old name** (while the
-  same edit works from chat) → you're on an older `control.html` + `Scoreboard Command`
-  pair. It sent the name and the flag as two back-to-back `DoAction`s, and SB 1.0.4 bleeds
-  the arguments of same-action calls that land within a few milliseconds together: both ran
+  same edit works from chat) → first check the blocking queue above. If that is set, you're
+  on an older `control.html` + `Scoreboard Command`
+  pair. It sent the name and the flag as two back-to-back `DoAction`s, and Streamer.bot mixes
+  the arguments of same-action runs that overlap: both ran
   as `p<N>flag`, the name was never written, and the next broadcast reflected the old name
   back into the input. SB → Logs shows the tell — two `token='p1flag'` lines and no
   `token='p1name'`. Fix: update `tally-shared/control.html` **and** re-paste

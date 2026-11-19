@@ -10,6 +10,20 @@ traceability.
 
 ## [Unreleased]
 
+## [1.0.18] — 2026-11-18
+
+### Documentation
+
+- **Put both actions in one blocking queue.** Setup step 3 now says to create a
+  blocking action queue and assign `Scoreboard Push` and `Scoreboard Command` to it.
+  Measured on Streamer.bot 1.0.7 with a probe action: in the default queue two runs of
+  one action overlap, and two back-to-back commands ran with one command's arguments
+  in 25 of 25 tries, from one client and from two. In a blocking queue it was 0 of 25
+  both ways. So the "arg-bleed" that the companion `flag` argument and `setmany` work
+  around is not specific to 1.0.4 or to one client, and the queue setting is the fix
+  that also covers chat and Stream Deck. Troubleshooting gains an entry for a command
+  lost when two arrive together. No code changed; nothing needs re-pasting.
+
 ## [1.0.16] — 2026-11-18
 
 ### Added
@@ -153,5 +167,6 @@ Initial release — Streamer.bot-native tournament scorebug for OBS. (`d90adf2`)
 Primetime theme and roster scrapers vendored from StreamScoreboard (same
 author, MIT).
 
+[1.0.18]: https://github.com/FlashGalatine/tally-scorebug/compare/v1.0.16...v1.0.18
 [1.0.16]: https://github.com/FlashGalatine/tally-scorebug/compare/f264150...v1.0.16
 [1.0.10]: https://github.com/FlashGalatine/tally-scorebug/compare/d90adf2...f264150
