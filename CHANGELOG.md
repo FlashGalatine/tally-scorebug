@@ -10,6 +10,8 @@ traceability.
 
 ## [Unreleased]
 
+## [1.0.16] — 2026-11-18
+
 ### Added
 
 - **Optional start.gg opponent autofill.** In 2-team mode, enable the Roster
@@ -44,6 +46,13 @@ traceability.
   the roster, ↑/↓ move, Enter or click picks, Esc/blur close; Enter without a
   highlighted row is still the "Set" shortcut. Evo-sized rosters render the first
   200 matches and say how many more. `verify` 61/61, `verify:render` 25/25.
+
+### Documentation
+
+- **Restrict the chat command.** The quick start now says to limit the `!sb` command
+  (and any other chat command pointed at `Scoreboard Command`) to moderators and the
+  broadcaster. The action does not check who typed a command, so an unrestricted
+  command lets any viewer set names and titles, reset scores or change the team count.
 
 ## [1.0.10] — 2026-07-29
 
@@ -144,4 +153,5 @@ Initial release — Streamer.bot-native tournament scorebug for OBS. (`d90adf2`)
 Primetime theme and roster scrapers vendored from StreamScoreboard (same
 author, MIT).
 
-[1.0.10]: https://github.com/FlashGalatine/tally-scorebug/compare/d90adf2...main
+[1.0.16]: https://github.com/FlashGalatine/tally-scorebug/compare/f264150...v1.0.16
+[1.0.10]: https://github.com/FlashGalatine/tally-scorebug/compare/d90adf2...f264150
