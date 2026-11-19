@@ -403,5 +403,6 @@ MIT — see [LICENSE](LICENSE). The Primetime theme and the roster platform scra
 vendored from [StreamScoreboard](https://github.com/FlashGalatine) (same author, MIT) —
 if you want a full web dashboard, more themes, and per-player add-in fields, that's the
 bigger sibling this project is the Streamer.bot-native distillation of. Flag SVGs by
-[flag-icons](https://github.com/lipis/flag-icons) (MIT, via jsDelivr); Quantico typeface
-via Google Fonts (OFL). See [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+[flag-icons](https://github.com/lipis/flag-icons) (MIT) and the Quantico typeface (OFL) are
+included in the theme folder, so the panels need no internet. See
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

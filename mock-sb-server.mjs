@@ -44,7 +44,9 @@ const MIME = {
   '.css': 'text/css; charset=utf-8',
   '.json': 'application/json; charset=utf-8',
   '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
-  '.svg': 'image/svg+xml', '.woff': 'font/woff', '.woff2': 'font/woff2', '.ttf': 'font/ttf',
+  '.ttf': 'font/ttf',
+  // Measured on Streamer.bot 1.0.7: .svg, .woff and .woff2 are NOT given their own
+  // type; they fall through to application/octet-stream. The theme has to work with that.
 };
 
 // Flat lite state — the exact values the C# "Scoreboard Push" reads from globals.

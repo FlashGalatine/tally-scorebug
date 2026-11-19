@@ -14,7 +14,7 @@
 // It does NOT render pixels; verify-render.mjs does that in a real browser.
 
 import { spawn } from 'node:child_process';
-import { readFile, mkdtemp, rm } from 'node:fs/promises';
+import { readFile, readdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { resolve, dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -410,6 +410,22 @@ async function main() {
     for (const word of ['constructor', 'toString', '__proto__', 'hasOwnProperty', 'valueOf']) {
       let got; try { got = globalThis.Nations.resolveFlag(word); } catch (e) { got = 'THREW ' + e.message; }
       check(`resolver: '${word}' → null (no throw)`, got === null, String(got));
+    }
+
+    // ── 4a. Every flag the nation table can produce is a file in the theme (TAL-19) ─
+    console.log('\n[4a] theme assets: flags and font are local files');
+    const flagDir = resolve(__dirname, 'tally-themes', 'primetime', 'flags');
+    const haveFlags = new Set((await readdir(flagDir)).filter((f) => /^[a-z]{2}\.svg$/.test(f)).map((f) => f.slice(0, 2)));
+    const missingFlags = [...new Set(Object.values(jsMap))].filter((iso) => !haveFlags.has(iso));
+    check(`a flag file exists for every code in the nation table (${new Set(Object.values(jsMap)).size} codes, ${haveFlags.size} files)`, missingFlags.length === 0, missingFlags.join(', '));
+    const themeCss = await readFile(resolve(__dirname, 'tally-themes', 'primetime', 'theme.css'), 'utf8');
+    const themeJs = await readFile(resolve(__dirname, 'tally-themes', 'primetime', 'theme.js'), 'utf8');
+    check('theme.css loads nothing from another host', !/@import|https?:\/\//.test(themeCss.replace(/\/\*[\s\S]*?\*\//g, '')));
+    check('theme.js names no CDN', !/jsdelivr|googleapis|gstatic|unpkg|cdnjs/i.test(themeJs));
+    for (const f of ['fonts/quantico-latin-400-normal.woff2', 'fonts/quantico-latin-700-normal.woff2', 'flags/jp.svg', 'fonts/OFL.txt', 'flags/LICENSE.txt']) {
+      const r = await fetch(`${BASE}/tally-themes/primetime/${f}`);
+      await r.arrayBuffer();
+      check(`served: tally-themes/primetime/${f}`, r.status === 200);
     }
 
     // ── 4b. ?sbport must be a plain port number (TAL-18) ─────────────────────────
