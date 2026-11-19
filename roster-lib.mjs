@@ -86,13 +86,22 @@ async function fixturePlatform(url) {
   };
 }
 
-export async function fetchRoster(url) {
+// "start.gg/tournament/x/event/y" or "challonge.com/abc" pasted without a scheme.
+// A bare word with no dot is left alone (Challonge accepts a bare slug).
+export function normalizeInput(input) {
+  const s = String(input || '').trim();
+  if (!s || /^[a-z][a-z0-9+.-]*:/i.test(s)) return s;
+  return /^[^\s\/]+\.[^\s\/]+(\/|$)/.test(s) ? 'https://' + s : s;
+}
+
+export async function fetchRoster(input) {
+  const url = normalizeInput(input);
   const platform = (await fixturePlatform(url)) || detectPlatform(url);
   if (!platform) {
     throw new Error('Unsupported URL. Supported: ' + listSupportedPlatforms().map((p) => p.displayName).join(', '));
   }
   const id = platform.parseId(url);
-  if (!id) throw new Error(`Could not parse a tournament id from that ${platform.displayName} URL.`);
+  if (!id) throw new Error(`Could not find a tournament in that ${platform.displayName} URL. Paste the bracket's own page (for example https://challonge.com/mytourney or https://www.start.gg/tournament/<t>/event/<e>).`);
 
   const config = await loadConfig();
   const participants = await platform.fetchParticipants(id, config, url);

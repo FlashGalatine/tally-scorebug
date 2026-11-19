@@ -28,7 +28,10 @@ export const roundone = {
       const url = new URL(raw);
       if (!/(^|\.)round\.one$/i.test(url.hostname)) return null;
       const m = url.pathname.match(/^\/tournament\/([^\/?#]+)/);
-      return m ? m[1] : null;
+      if (!m) return null;
+      // The pathname is already percent-encoded and the fetch encodes again, so
+      // decode here ("caf%C3%A9-cup" must not become "caf%25C3%25A9-cup").
+      try { return decodeURIComponent(m[1]); } catch { return m[1]; }
     } catch {
       return null;
     }

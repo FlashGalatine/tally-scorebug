@@ -12,7 +12,7 @@
 //   a bare ISO-3166 alpha-2 code ('gb', 'jp') → emoji
 //   anything else → null (unknown — callers warn and change nothing)
 //
-// The name list extends StreamScoreboard's country-codes.js (same author/MIT) with more
+// The name list extends StreamScoreboard's country list (same author/MIT) with more
 // countries, territories, and colloquial aliases. Keys are stored PRE-NORMALIZED:
 // lowercase, no apostrophes/periods, '&'→'and', '-'/'_'→' ', single spaces.
 

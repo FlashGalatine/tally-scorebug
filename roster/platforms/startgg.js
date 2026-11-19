@@ -15,14 +15,27 @@
 //   /tournament/<t>/event/<e>                    (event landing)
 //   /tournament/<t>/events/<e>/...               (any sub-page incl. standings)
 
-import { flagEmojiForCountry } from '../country-codes.js';
+import '../../tally-shared/nations.js'; // side effect: globalThis.Nations, the table the panel and the C# use
+
+// start.gg gives a full English country name ("United States", "Türkiye"). Look it
+// up in the one nation table. Only a table match counts here: unlike a typed flag, a
+// two-letter string or an unknown name from a profile is not a flag.
+export function flagEmojiForCountry(name) {
+  const { MAP, normalize, isoToEmoji } = globalThis.Nations;
+  const plain = String(name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const key = normalize(plain);
+  return key && Object.prototype.hasOwnProperty.call(MAP, key) ? isoToEmoji(MAP[key]) : null;
+}
+
+// The path of a start.gg URL without the "/admin" prefix organisers copy from the
+// tournament's admin pages.
+function sgPath(url) { return url.pathname.replace(/^\/admin(?=\/)/, ''); }
 
 const PUBLIC_ENDPOINT = 'https://www.start.gg/api/-/gql';
 const API_ENDPOINT = 'https://api.start.gg/gql/alpha';
 const DEFAULT_CLIENT_VERSION = '20';
 const PAGE_SIZE = 100;
 const MAX_PAGES = 50; // safety cap (5,000 entrants)
-const SF6_VIDEOGAME_ID = 43868; // disambiguates multi-event tournaments toward SF6
 
 // Resolve a tournament-level URL (no event segment) to its events so we can pick
 // the one to import. Returns each event's full slug (tournament/<t>/event/<e>).
@@ -31,7 +44,7 @@ query StreamScoreboardTournamentEvents($slug: String!) {
   tournament(slug: $slug) {
     id
     name
-    events { id name slug videogame { id } }
+    events { id name slug }
   }
 }`;
 
@@ -95,9 +108,9 @@ export const startgg = {
       // Event-level URL → "<t>/<e>"; tournament-level URL (any sub-page incl.
       // /details, or no sub-page) → bare "<t>" so the import doesn't bail and
       // fetchParticipants can resolve the event from the tournament's events.
-      const ev = url.pathname.match(/^\/tournament\/([^\/]+)\/(?:event|events)\/([^\/]+)/);
+      const ev = sgPath(url).match(/^\/tournament\/([^\/]+)\/(?:event|events)\/([^\/]+)/);
       if (ev) return `${ev[1]}/${ev[2]}`;
-      const t = url.pathname.match(/^\/tournament\/([^\/]+)/);
+      const t = sgPath(url).match(/^\/tournament\/([^\/]+)/);
       if (t) return t[1];
       return null;
     } catch {
@@ -174,7 +187,7 @@ function deriveEventSlug(originalUrl, displayId) {
     try {
       const url = new URL(originalUrl);
       if (/(^|\.)start\.gg$/i.test(url.hostname)) {
-        const m = url.pathname.match(/^\/tournament\/([^\/]+)\/(?:event|events)\/([^\/]+)/);
+        const m = sgPath(url).match(/^\/tournament\/([^\/]+)\/(?:event|events)\/([^\/]+)/);
         if (m) return `tournament/${m[1]}/event/${m[2]}`;
       }
     } catch { /* fall through */ }
@@ -195,7 +208,7 @@ function deriveTournamentSlug(originalUrl, displayId) {
     try {
       const url = new URL(originalUrl);
       if (/(^|\.)start\.gg$/i.test(url.hostname)) {
-        const m = url.pathname.match(/^\/tournament\/([^\/]+)/);
+        const m = sgPath(url).match(/^\/tournament\/([^\/]+)/);
         if (m) return `tournament/${m[1]}`;
       }
     } catch { /* fall through */ }
@@ -208,7 +221,7 @@ function deriveTournamentSlug(originalUrl, displayId) {
 }
 
 // Pick the event to import from a tournament. One event → use it (any game);
-// many → prefer the single SF6 event; otherwise throw, naming the events so the
+// many → always throw (never guess which game is on stream), naming the events so the
 // operator can paste a specific event URL.
 async function resolveEventSlug(tournamentSlug, apiKey) {
   const data = await gql({
@@ -226,13 +239,9 @@ async function resolveEventSlug(tournamentSlug, apiKey) {
     throw new Error('start.gg: this tournament has no events yet');
   }
 
-  let chosen = null;
-  if (events.length === 1) {
-    chosen = events[0];
-  } else {
-    const sf6 = events.filter((e) => Number(e?.videogame?.id) === SF6_VIDEOGAME_ID);
-    if (sf6.length === 1) chosen = sf6[0];
-  }
+  // With more than one event there is no safe guess: a streamer running another
+  // game would import the wrong entrants without a word. Ask for the event URL.
+  const chosen = events.length === 1 ? events[0] : null;
 
   if (!chosen || !chosen.slug) {
     const list = events.map((e) => `${e.name} → ${e.slug}`).join('; ');

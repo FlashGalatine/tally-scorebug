@@ -15,6 +15,20 @@
 const API_BASE = 'https://api.challonge.com/v1';
 const TOURNAMENT_STORE_RE = /window\._initialStoreState\['TournamentStore'\]\s*=\s*/;
 
+// First path segments that are Challonge's own pages, never a bracket.
+const RESERVED = new Set(['tournaments', 'communities', 'users', 'events', 'teams', 'games', 'search',
+  'settings', 'session', 'user_session', 'dashboard', 'about', 'pricing', 'api', 'module']);
+
+// The bracket slug in a challonge.com URL, or null. A leading locale segment
+// ("/fr/mytourney", "/pt_BR/mytourney") is skipped; Challonge's own pages are refused.
+export function challongeSlug(url) {
+  const segs = url.pathname.split('/').filter(Boolean);
+  if (segs.length >= 2 && /^[a-z]{2}([_-][a-z]{2})?$/i.test(segs[0])) segs.shift();
+  const slug = segs[0];
+  if (!slug || RESERVED.has(slug.toLowerCase())) return null;
+  return slug;
+}
+
 export const challonge = {
   name: 'challonge',
   displayName: 'Challonge',
@@ -38,7 +52,7 @@ export const challonge = {
       const url = new URL(raw);
       if (!/(^|\.)challonge\.com$/i.test(url.hostname)) return null;
       const subdomain = url.hostname.replace(/\.?challonge\.com$/i, '').replace(/\.$/, '');
-      slug = url.pathname.replace(/^\/+/, '').split(/[\/?#]/)[0];
+      slug = challongeSlug(url);
       if (!slug) return null;
       if (subdomain && subdomain !== 'www') return `${subdomain}-${slug}`;
       return slug;
@@ -128,8 +142,9 @@ function deriveModuleUrl(originalUrl, tournamentId) {
     try {
       const u = new URL(originalUrl);
       if (/(^|\.)challonge\.com$/i.test(u.hostname)) {
-        const slug = u.pathname.replace(/^\/+/, '').split(/[\/?#]/)[0];
-        if (slug) return `${u.origin}/${slug}/module`;
+        // Always https and the default port, whatever was pasted.
+        const slug = challongeSlug(u);
+        if (slug) return `https://${u.hostname}/${slug}/module`;
       }
     } catch {
       // Bare slug — fall through to challonge.com root.
