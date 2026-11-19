@@ -34,8 +34,10 @@
   'use strict';
 
   const q = (() => { try { return new URLSearchParams(location.search); } catch { return new URLSearchParams(''); } })();
-  const WS_URL = window.__SB_WS_URL
-    || (q.get('sbport') ? `ws://127.0.0.1:${q.get('sbport')}/` : 'ws://127.0.0.1:8080/');
+  // ?sbport must be a plain port number. Anything else (for example "8080@other.host",
+  // which a URL parser reads as a different host) is ignored.
+  const sbport = (() => { const v = q.get('sbport'); return v && /^\d{1,5}$/.test(v) && Number(v) >= 1 && Number(v) <= 65535 ? v : null; })();
+  const WS_URL = window.__SB_WS_URL || `ws://127.0.0.1:${sbport || '8080'}/`;
   const SYNC_ACTION = (typeof window.__SB_SYNC_ACTION === 'string')
     ? window.__SB_SYNC_ACTION
     : 'Scoreboard Push';

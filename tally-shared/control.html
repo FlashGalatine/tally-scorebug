@@ -20,6 +20,8 @@
   .row:last-child { margin-bottom:0; }
   input[type=text] { flex:1; min-width:0; background:#111318; border:1px solid var(--line); color:var(--text); border-radius:7px; padding:8px 10px; font:inherit; }
   input:focus { outline:none; border-color:var(--accent); }
+  /* Edited but not Set yet: broadcasts leave it alone, and the next Set sends it. Esc reverts. */
+  input.dirty { border-color:#eab308; box-shadow:inset 3px 0 0 #eab308; }
   button { background:#2a2d38; border:1px solid var(--line); color:var(--text); border-radius:7px; padding:8px 10px; font:inherit; cursor:pointer; }
   button:hover { background:#343846; }
   button:active { transform:translateY(1px); }
@@ -147,8 +149,11 @@
 (function () {
   'use strict';
   var q = new URLSearchParams(location.search);
-  var WS_URL = window.__SB_WS_URL || (q.get('sbport') ? 'ws://127.0.0.1:' + q.get('sbport') + '/' : 'ws://127.0.0.1:8080/');
-  var HELPER = window.__ROSTER_HELPER || 'http://127.0.0.1:' + (q.get('rosterport') || '7481');
+  // A port parameter must be a plain port number. Anything else (for example
+  // "8080@other.host", which a URL parser reads as a different host) is ignored.
+  function portParam(name) { var v = q.get(name); return v && /^\d{1,5}$/.test(v) && Number(v) >= 1 && Number(v) <= 65535 ? v : null; }
+  var WS_URL = window.__SB_WS_URL || 'ws://127.0.0.1:' + (portParam('sbport') || '8080') + '/';
+  var HELPER = window.__ROSTER_HELPER || 'http://127.0.0.1:' + (portParam('rosterport') || '7481');
   var SYNC_ACTION = 'Scoreboard Push';
   var CMD_ACTION = 'Scoreboard Command';
   var ws = null, id = 0, delay = 1500;
@@ -161,16 +166,31 @@
   // old value), and any Set click flushes ALL dirty fields in one `setmany`
   // DoAction — edit both players, click either Set, both apply.
   var TEXT_FIELDS = ['p1name', 'p2name', 'p3name', 'p4name', 'p1flag', 'p2flag', 'p3flag', 'p4flag', 'header', 'subheader'];
-  var dirty = {}; // field id → true
+  var dirty = {}; // field id → true (read it; change it only through setDirty)
+  var live = {};  // field id → the value the last broadcast carried
+  function setDirty(f, on) {
+    if (on) dirty[f] = true; else delete dirty[f];
+    var el = document.getElementById(f);
+    if (el) el.classList.toggle('dirty', !!on);
+  }
+  // Throw away an unsent edit: back to the live value, no longer dirty.
+  function revert(f) {
+    setDirty(f, false);
+    delete manualEdits[f];
+    var el = document.getElementById(f);
+    if (el) el.value = (live[f] == null ? '' : live[f]);
+    if (/^p[1-4]flag$/.test(f)) updatePreview(f.slice(0, 2));
+  }
 
   function $(id) { return document.getElementById(id); }
   function setStatus(on, text) {
     $('dot').classList.toggle('on', on);
     $('statusText').textContent = text;
   }
-  // ONE DoAction per click — never two in a row to the same action. Streamer.bot
-  // 1.0.4 bleeds the arguments of DoActions that arrive within a few ms of each
-  // other into each other, so a burst silently loses a command. Extra fields ride
+  // ONE DoAction per click — never two in a row to the same action. When two runs
+  // of one action overlap (Streamer.bot's default queue; measured on 1.0.7, first
+  // seen on 1.0.4) they both see one request's arguments, so a burst silently loses
+  // a command. A blocking queue in Streamer.bot prevents the overlap (see README). Extra fields ride
   // as siblings of `value` in the same args object instead (see doSet).
   function send(command, value, extra) {
     if (!ws || ws.readyState !== 1) return;
@@ -179,9 +199,13 @@
     if (extra) for (var k in extra) args[k] = extra[k];
     ws.send(JSON.stringify({ request: 'DoAction', id: String(++id), action: { name: CMD_ACTION }, args: args }));
   }
+  // Only an unsent edit (`dirty`) is protected from a broadcast. Focus alone is not:
+  // a box left focused after Enter used to keep its old value for ever, and a later
+  // name Set then sent that stale flag.
   function reflect(elId, val) {
+    live[elId] = (val == null ? '' : val);
     var el = $(elId);
-    if (el && document.activeElement !== el && !dirty[elId]) el.value = (val == null ? '' : val);
+    if (el && !dirty[elId]) el.value = live[elId];
   }
   function updatePreview(which) {
     var raw = $(which + 'flag').value;
@@ -207,6 +231,9 @@
     }
     $('card-p3').classList.toggle('hide', teams < 3);
     $('card-p4').classList.toggle('hide', teams < 4);
+    // A hidden card must not keep unsent edits that a later Set would send unseen.
+    if (teams < 3) { revert('p3name'); revert('p3flag'); }
+    if (teams < 4) { revert('p4name'); revert('p4flag'); }
     var btns = document.querySelectorAll('button[data-teams]');
     for (var b = 0; b < btns.length; b++) btns[b].classList.toggle('on', Number(btns[b].dataset.teams) === teams);
     reflect('header', d.header); reflect('subheader', d.subheader);
@@ -228,7 +255,8 @@
     var players = (j && Array.isArray(j.players)) ? j.players
       : (j && Array.isArray(j.names)) ? j.names.map(function (n) { return { name: n, flag: null }; })
       : [];
-    rosterPlayers = new Map(players.map(function (p) { return [p.name, p.flag || null]; }));
+    rosterPlayers = new Map();
+    players.forEach(function (p) { if (!rosterPlayers.has(p.name)) rosterPlayers.set(p.name, p.flag || null); });
     rosterEntries = new Map();
     players.forEach(function (p) {
       // Older rosters remain usable for autocomplete; identity requires re-import.
@@ -321,7 +349,7 @@
         // Stage both fields without dispatching input (which would start a reverse lookup).
         $(other + 'name').value = j.opponent.name;
         $(other + 'flag').value = j.opponent.flag || '';
-        dirty[other + 'name'] = dirty[other + 'flag'] = true;
+        setDirty(other + 'name', true); setDirty(other + 'flag', true);
         updatePreview(other);
         $('opponentInfo').textContent = 'Opponent filled: ' + j.opponent.name +
           (j.set && j.set.round ? ' · ' + j.set.round : '') + '. Review, then Set.';
@@ -426,12 +454,16 @@
       if (li && Number(li.dataset.i) !== active) setActive(Number(li.dataset.i));
     });
   }
-  // Picking (or typing) an exact roster name auto-fills that player's flag — still
-  // editable before Set, which is the override path.
+  // Picking (or typing) an exact roster name sets that player's flag box — still
+  // editable before Set, which is the override path. A roster player with NO flag
+  // clears the box: leaving it alone sent the previous player's flag with the new name.
   function wireAutofill(which) {
     $(which + 'name').addEventListener('input', function (e) {
-      var flag = rosterPlayers.get(e.target.value);
-      if (flag) { $(which + 'flag').value = flag; dirty[which + 'flag'] = true; updatePreview(which); }
+      if (rosterPlayers.has(e.target.value)) {
+        var flag = rosterPlayers.get(e.target.value) || '';
+        if ($(which + 'flag').value !== flag) { $(which + 'flag').value = flag; setDirty(which + 'flag', true); }
+        updatePreview(which);
+      }
       lookupOpponent(which);
     });
   }
@@ -443,7 +475,7 @@
   // Any user edit marks the field dirty until it's Set (see the `dirty` note above).
   TEXT_FIELDS.forEach(function (f) {
     $(f).addEventListener('input', function () {
-      dirty[f] = true;
+      setDirty(f, true);
       if (/^p[1-4](name|flag)$/.test(f)) manualEdits[f] = true;
     });
   });
@@ -473,7 +505,7 @@
   // data-cmd = a bare command (score/reset/swap); data-set = a set-* command whose
   // value comes from the input named in data-src. All multi-field sends ride ONE
   // DoAction (companion `flag` arg, or `setmany` sibling args) — never a burst of
-  // DoActions, which SB 1.0.4 arg-bleeds: both invocations ran as `p<N>flag`, the
+  // DoActions, whose overlapping runs mix arguments: both invocations ran as `p<N>flag`, the
   // name was never written, and the next broadcast snapped the input back to the
   // old name.
   // A Set click flushes the clicked field PLUS every other dirty text field, all in
@@ -481,13 +513,14 @@
   // command chat uses; a name + its own flag → the companion-`flag` form (works
   // against the older C# too); anything more → `setmany`, one sibling arg per
   // field, so "edit Player 1 and Player 2, click Set once" applies both.
+  // A name Set carries the flag box ONLY when the flag box is dirty (typed, or filled
+  // by a roster pick). An untouched flag box is not sent, so the flag on stream stays.
   function doSet(setCmd, srcId) {
     // A disconnected click cannot apply edits; keep their dirty/manual protection.
     if (!ws || ws.readyState !== 1) return;
     cancelOpponent();
-    dirty[srcId] = true; // the clicked field always sends, edited or not
+    setDirty(srcId, true); // the clicked field always sends, edited or not
     var companion = /^p[1-4]name$/.test(setCmd) ? setCmd.slice(0, 2) + 'flag' : null;
-    if (companion) dirty[companion] = true; // a name Set always carries its flag box
     var fields = TEXT_FIELDS.filter(function (f) { return dirty[f]; });
     var vals = {};
     fields.forEach(function (f) {
@@ -496,7 +529,7 @@
       // logs its own warning and leaves that flag unchanged.
       if (/flag$/.test(f)) { var r = window.Nations.resolveFlag(v); if (r !== null) v = r; }
       vals[f] = v;
-      delete dirty[f];
+      setDirty(f, false);
       delete manualEdits[f];
     });
     if (fields.length === 1) { send(fields[0], vals[fields[0]]); return; }
@@ -518,6 +551,9 @@
     else if (b.dataset.set) doSet(b.dataset.set, b.dataset.src);
   });
   document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && !e.defaultPrevented && e.target.tagName === 'INPUT' && dirty[e.target.id]) {
+      cancelOpponent(); revert(e.target.id); return;
+    }
     if (e.key !== 'Enter' || e.target.tagName !== 'INPUT') return;
     if (e.target.id === 'rosterUrl') { importRoster(); return; }
     var setBtn = document.querySelector('button[data-src="' + e.target.id + '"]');

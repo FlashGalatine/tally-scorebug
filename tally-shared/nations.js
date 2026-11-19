@@ -123,7 +123,9 @@
     if (lower === 'none' || lower === 'clear' || lower === 'off' || lower === 'remove') return '';
     for (var i = 0; i < raw.length; i++) if (raw.charCodeAt(i) > 127) return raw; // emoji passthrough
     var key = normalize(raw);
-    var iso = MAP[key];
+    // Own keys only: MAP is a plain object, so "constructor" or "toString" would
+    // otherwise find an inherited function and throw in isoToEmoji.
+    var iso = Object.prototype.hasOwnProperty.call(MAP, key) ? MAP[key] : null;
     if (iso) return isoToEmoji(iso);
     if (/^[a-z]{2}$/.test(key)) return isoToEmoji(key); // bare ISO code
     return null;
