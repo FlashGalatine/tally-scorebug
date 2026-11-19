@@ -20,7 +20,8 @@
 //
 // Requires Node.js on PATH (node.exe) — no npm install is needed at runtime; the
 // helper has zero package dependencies. Running the action twice is harmless: the
-// second instance finds the port taken (EADDRINUSE) and exits, the first keeps serving.
+// second instance finds the port taken, says so and exits; the first keeps serving.
+// To stop the hidden helper: POST http://127.0.0.1:7481/shutdown (see the README).
 //
 // If you'd rather not add the reference, skip this action entirely and double-click
 // start-roster-helper.bat instead — same result, visible log window.

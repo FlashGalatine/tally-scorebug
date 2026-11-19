@@ -58,7 +58,7 @@ export const challonge = {
 async function fetchViaApi(tournamentId, apiKey) {
   if (!tournamentId) throw new Error('Missing tournament id');
   const url = `${API_BASE}/tournaments/${encodeURIComponent(tournamentId)}/participants.json?api_key=${encodeURIComponent(apiKey)}`;
-  const res = await fetch(url, { headers: { Accept: 'application/json' } });
+  const res = await fetch(url, { headers: { Accept: 'application/json' }, signal: AbortSignal.timeout(12000) });
   if (!res.ok) {
     let detail = '';
     try { detail = await res.text(); } catch {}
@@ -87,6 +87,7 @@ async function fetchViaScrape(originalUrl, tournamentId) {
       // A realistic UA helps avoid surprises if Challonge ever tightens the embed gate.
       'User-Agent': 'Mozilla/5.0 (compatible; StreamScoreboard/0.1)',
     },
+    signal: AbortSignal.timeout(12000),
   });
   if (!res.ok) {
     throw new Error(`Challonge ${res.status}: ${res.statusText} (no api key configured; fell back to public scrape)`);

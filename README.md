@@ -253,10 +253,29 @@ of three ways, no terminal required:
 - **Double-click** [`start-roster-helper.bat`](start-roster-helper.bat).
 - **Terminal:** `npm run roster` (alias for `node roster-helper.mjs`).
 
+**Who the helper answers.** It holds your API keys and overwrites the roster, so it only
+answers the control panel, not any web page you happen to have open. Allowed by default:
+the panel served from Streamer.bot's HTTP server at `http://127.0.0.1:7474` or
+`http://localhost:7474`. If you moved that server to another port, or open the panel from
+somewhere else, add the address: set `"rosterAllowedOrigins": ["http://127.0.0.1:7480"]`
+in `config.json`, or the `ROSTER_ALLOWED_ORIGINS` environment variable (comma separated).
+Scripts with no browser behind them (`curl`, the CLI below) are not affected.
+
+**Stopping it.** Close its window, or, for the hidden one started from Streamer.bot:
+
+```
+curl -X POST http://127.0.0.1:7481/shutdown
+```
+
+(PowerShell: `Invoke-RestMethod -Method Post http://127.0.0.1:7481/shutdown`.) After
+updating Tally, stop the old helper and start the new one; the Import button tells you
+when an older helper is still running.
+
 API keys are optional — public Challonge brackets and start.gg's public path work keyless
 (a live start.gg test returned 12/12 entrants *with* flags). If a bracket imports flagless,
-copy `config.example.json` → `config.json` and set `startggApiKey`. CLI alternative:
-`npm run import -- <tournament-url>`.
+copy `config.example.json` → `config.json` and set `startggApiKey`. If `config.json` cannot be
+read as JSON (a trailing comma, a missing quote), the import stops and says so instead of
+quietly running without your keys. CLI alternative: `npm run import -- <tournament-url>`.
 
 ## Make it yours
 
@@ -329,6 +348,14 @@ requests that arrive together all run with the last one's arguments;
   name + flag in one call. Updating only the panel still fixes the name (the flag just
   stops riding along until the C# is re-pasted).
 - **Import fails with "helper not running"** → start the roster helper (see above).
+- **Import says "an older roster helper is still running"** → a helper from before an
+  update still holds port 7481. Stop it (close its window, or end its `node.exe` in Task
+  Manager; the newer helper also accepts `POST /shutdown`) and start the new one.
+- **Import says "the roster helper refused this panel"** → the panel is not served from an
+  address the helper allows. Add it to `rosterAllowedOrigins` in `config.json` (see
+  "Who the helper answers") and restart the helper.
+- **Import says "import timed out"** → the tournament site did not answer within two
+  minutes. Each request to a site is given 12 seconds; try again.
 - **Name autocomplete shows nothing in the OBS dock** (but works in a Chrome/Firefox tab) →
   you're on an older `control.html` that used a native `<datalist>`. OBS docks and browser
   sources are CEF *Alloy-style* browsers, and Chromium draws `<datalist>` suggestions with
@@ -345,8 +372,9 @@ requests that arrive together all run with the last one's arguments;
   culprit** → a zombie socket. If SB previously exited uncleanly (crash/force-kill) while
   the Roster Helper action's `node roster-helper.mjs` child was running, an older version
   of that action let node inherit SB's listen sockets, keeping `:8080` bound under a PID
-  that no longer exists. Fix: kill the orphaned node (`taskkill /im node.exe /f`, or find
-  it via `Get-NetTCPConnection -LocalPort 8080`), restart SB's WS server, and re-paste the
+  that no longer exists. Fix: find the orphaned node with
+  `Get-NetTCPConnection -LocalPort 8080` and end that process (`taskkill /im node.exe /f`
+  also works, but it ends every Node program, including other plugins' sidecars), restart SB's WS server, and re-paste the
   current [`actions/streamerbot-roster-helper.cs`](actions/streamerbot-roster-helper.cs) —
   it now launches node with `UseShellExecute = true`, which doesn't pass SB's handles to
   the child, so this can't recur.

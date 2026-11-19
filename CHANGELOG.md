@@ -10,6 +10,42 @@ traceability.
 
 ## [Unreleased]
 
+## [1.0.26] — 2026-11-18
+
+### Security
+
+- **The roster helper no longer answers every web page.** It used to send
+  `Access-Control-Allow-Origin: *` and take an import as a plain GET, so any page open in
+  a browser could make it import a bracket, overwrite `roster.json`, and read entrants
+  through your start.gg key. It now answers a named origin only if it is allowed
+  (by default the control panel at `http://127.0.0.1:7474` or `http://localhost:7474`;
+  add others with `rosterAllowedOrigins` in `config.json` or `ROSTER_ALLOWED_ORIGINS`),
+  refuses browser requests marked cross-site, and checks the `Host` header. Import is a
+  POST with a JSON body. The old `GET /import?url=` is still answered for one release,
+  and only for an allowed origin, so a panel that was not refreshed keeps working.
+
+### Added
+
+- **`GET /health`** reports the helper's version and API level. The Import button checks
+  it and says when an older helper is still running, or when the helper refused the
+  panel's address.
+- **`POST /shutdown`** stops the helper, including the hidden one started from
+  Streamer.bot. The README no longer suggests ending every `node.exe`.
+
+### Fixed
+
+- **A `config.json` that is not valid JSON stops the import and says so.** It used to be
+  ignored without a word, so the API key was never used. A byte-order mark is accepted.
+- **A malformed API key is refused without being echoed.** A key with a line break in it
+  used to come back, in full, in the error text.
+- **Imports cannot hang or collide.** Every request to a tournament site has a 12-second
+  limit (only start.gg had one), the panel gives up after two minutes, imports run one
+  at a time, and `roster.json` is written to a temp file and renamed into place.
+- **A second helper start says the port is taken** and exits cleanly instead of crashing.
+- **A roster the panel cannot read** is reported as such, not as "helper not running".
+
+Copy the helper files and `tally-shared`, restart the helper, reload the dock.
+
 ## [1.0.24] — 2026-11-18
 
 ### Changed
@@ -255,6 +291,7 @@ Initial release — Streamer.bot-native tournament scorebug for OBS. (`d90adf2`)
 Primetime theme and roster scrapers vendored from StreamScoreboard (same
 author, MIT).
 
+[1.0.26]: https://github.com/FlashGalatine/tally-scorebug/compare/v1.0.24...v1.0.26
 [1.0.24]: https://github.com/FlashGalatine/tally-scorebug/compare/v1.0.22...v1.0.24
 [1.0.22]: https://github.com/FlashGalatine/tally-scorebug/compare/v1.0.20...v1.0.22
 [1.0.20]: https://github.com/FlashGalatine/tally-scorebug/compare/v1.0.18...v1.0.20

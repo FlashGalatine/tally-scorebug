@@ -301,6 +301,7 @@ async function main() {
     await verifyOpponentAutofill(browser);
     await verifyFlagBox(browser);
     await verifySendQueue(browser);
+    await verifyImport(browser);
 
     await stripPage.screenshot({ path: resolve(__dirname, 'test-render.png') });
     await ctrlPage.screenshot({ path: resolve(__dirname, 'control-render.png') });
@@ -720,6 +721,54 @@ async function verifySendQueue(browser) {
     await p.textContent('#opponentInfo'));
 
   check('send-queue flow raises no browser script errors', errors.length === 0, errors.join('; '));
+  await p.close();
+}
+
+// Sprint 5: the panel's side of the roster helper contract (TAL-04, 12, 15).
+async function verifyImport(browser) {
+  console.log('\n  roster import from the panel');
+  const p = await browser.newPage({ viewport: { width: 420, height: 900 } });
+  const errors = [];
+  p.on('pageerror', (err) => errors.push(err.message));
+  let health = { status: 200, json: { ok: true, name: 'tally-roster-helper', api: 2, version: 'test' } };
+  let importReply = { ok: true, roster: { tournament: 'cup', platform: 'sample', players: [{ name: 'Alpha', flag: null }, { name: 'Beta', flag: null }] } };
+  const seen = [];
+  await p.route('**/tally-shared/roster.json', (route) => route.fulfill({ status: 404, body: 'none' }));
+  await p.route('http://127.0.0.1:7481/health', (route) => route.fulfill(health));
+  await p.route('http://127.0.0.1:7481/import**', async (route) => {
+    const req = route.request();
+    seen.push({ method: req.method(), url: req.url(), type: req.headers()['content-type'] || '', body: req.postData() });
+    await route.fulfill({ json: importReply });
+  });
+  await p.goto(`${BASE}/tally-shared/control.html?sbport=${WS_PORT}`);
+  await p.waitForFunction(() => document.getElementById('dot').classList.contains('on'));
+  const info = () => p.textContent('#rosterInfo');
+  const waitInfo = (re) => p.waitForFunction((src) => new RegExp(src).test(document.getElementById('rosterInfo').textContent), re.source, { timeout: 4000 }).then(() => true).catch(() => false);
+
+  await p.fill('#rosterUrl', 'https://challonge.com/cup');
+  await p.click('#importRoster');
+  check('Import shows the imported roster', await waitInfo(/2 players/), await info());
+  check('Import is a POST with a JSON body and no URL in the query string',
+    seen.length === 1 && seen[0].method === 'POST' && /application\/json/.test(seen[0].type)
+    && JSON.parse(seen[0].body).url === 'https://challonge.com/cup' && !seen[0].url.includes('?'), JSON.stringify(seen));
+
+  // An older helper left running after an update answers /health with its 404 text.
+  health = { status: 404, json: { ok: false, error: 'Use GET /import?url=<tournament-url> or /opponent?eventId=<id>&entrantId=<id>' } };
+  seen.length = 0;
+  await p.click('#importRoster');
+  check('an older helper is named as the problem, and no import is attempted',
+    await waitInfo(/older roster helper/) && seen.length === 0, await info());
+
+  health = { status: 403, json: { ok: false, error: 'Origin http://127.0.0.1:9999 is not allowed to use the roster helper.' } };
+  await p.click('#importRoster');
+  check('a refused origin is reported with the helper\u2019s own explanation', await waitInfo(/refused this panel.*not allowed/), await info());
+
+  health = { status: 200, json: { ok: true, api: 2 } };
+  importReply = { ok: false, error: 'config.json is not valid JSON (check for a trailing comma or a missing quote). Your API keys were not used.' };
+  await p.click('#importRoster');
+  check('a helper-side error is shown as it came', await waitInfo(/import failed: config\.json is not valid JSON/), await info());
+  check('the Import button is usable again afterwards', !await p.isDisabled('#importRoster'));
+  check('import flow raises no browser script errors', errors.length === 0, errors.join('; '));
   await p.close();
 }
 
