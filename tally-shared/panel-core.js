@@ -60,6 +60,9 @@
   // with zero changes.
   function dispatch(d) {
     if (!d || typeof d.type !== 'string') return;
+    // 'sync' is StreamScoreboard's connect-time message. Tally's actions never send it
+    // (a connect asks "Scoreboard Push" for a scoreboard:update instead); it is handled
+    // so a theme ported from there keeps working if another sender uses it.
     if (d.type === 'sync' && d.scoreboard) {
       window.dispatchEvent(new CustomEvent('scoreboard:sync', { detail: d.scoreboard }));
     } else if (d.type === 'scoreboard:update') {

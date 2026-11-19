@@ -117,6 +117,23 @@ for (const state of [4, 6, 7]) test(`unambiguous pending set in state ${state} s
   assert.equal((await lookup()).opponent.name, 'Beta');
 });
 
+test('a called set is preferred over sets that are only pending', async t => {
+  const other = entrant(33, 'Gamma');
+  stubStartgg(t, () => setsResponse([set('pending-a', 1, [player, other]), set('called', 6), set('pending-b', 1, [player, entrant(44, 'Delta')])]));
+  const result = await lookup();
+  assert.equal(result.status, 'found');
+  assert.equal(result.opponent.name, 'Beta');
+});
+
+test('an in-progress set still outranks a called one, and two called sets stay ambiguous', async t => {
+  const other = entrant(33, 'Gamma');
+  stubStartgg(t, () => setsResponse([set('called', 6, [player, other]), set('live', 2)]));
+  assert.equal((await lookup()).opponent.name, 'Beta');
+  t.mock.restoreAll();
+  stubStartgg(t, () => setsResponse([set('called-a', 6, [player, other]), set('called-b', 6)]));
+  assert.equal((await lookup()).status, 'ambiguous');
+});
+
 test('missing event data reports a lookup error', async t => {
   stubStartgg(t, () => ({ event: null }));
   await assert.rejects(lookup, /unavailable/i);

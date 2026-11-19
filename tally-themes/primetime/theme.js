@@ -56,7 +56,9 @@
   function apply(state) {
     if (!state || !slot || !field) return;
     lastState = state;
-    // Angle variant: A (inward, default) / B (outward) — the operator flips it
+    // Angle variant: A (inward, default) / B (outward). NOT REACHABLE IN TALLY: its
+    // "Scoreboard Push" never sends fieldsEnabled['match.angle'], so this is always A.
+    // Kept because the theme is shared with StreamScoreboard, where the operator flips it
     // with the match-level "Outward angle (B)" add-in checkbox. theme.css swaps
     // the cell/title clip polygons when body has .angle-b.
     document.body.classList.toggle('angle-b', state.fieldsEnabled?.['match.angle'] === true);
@@ -235,6 +237,8 @@
       sponsor = parts[0].trim();
       name = parts.slice(1).join('|').trim();
     }
+    // Pronouns: never sent by Tally's "Scoreboard Push" (always empty here). Kept for
+    // StreamScoreboard, which shares this theme.
     const proOn = state.fieldsEnabled?.['player.pronouns'] === true;
     const pronouns = proOn ? String(p.fields?.pronouns ?? '').trim() : '';
 
@@ -252,6 +256,8 @@
       fitNameRow(row);
     };
 
+    // `animate` is never true in Tally (its push does not send it); StreamScoreboard
+    // sets it on a roster import.
     if (state.animate === true && !isFirst) {
       if (swapTimer) clearTimeout(swapTimer);
       row.classList.remove('swap-in');

@@ -3,7 +3,7 @@
 // is the render half that verify.mjs (protocol-only) deliberately skips.
 //
 // Requires a Chromium channel on the machine (system Edge/Chrome):
-//   npm install --no-save playwright-core
+//   npm install --no-save playwright-core@1.65.1
 // It opens the title panel + the P1 strip over the mock's HTTP server, asserts the
 // synced values paint, drives live changes (name/score/flag via /mock/cmd and the
 // control panel), asserts the panels update, and writes test-render.png /

@@ -137,7 +137,7 @@ async function rawClient() {
 }
 
 async function main() {
-  console.log('Lite Scoreboard — Streamer.bot seam verification\n');
+  console.log('Tally — Streamer.bot seam verification\n');
   let mock;
   try {
     mock = await startMock();

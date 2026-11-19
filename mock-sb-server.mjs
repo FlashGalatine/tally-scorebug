@@ -167,7 +167,7 @@ function customEvent(data) {
   });
 }
 
-// The exact `scoreboard:update` shape the themes consume (docs/PROTOCOL.md). Lite
+// The exact `scoreboard:update` shape the themes consume (docs/THEMING.md). Lite
 // carries one add-in field — the flag — mirroring scoreboard-push.cs: per-player
 // fields.flag plus fieldsEnabled['player.flag'] (on when either player has one).
 function stateMessage() {

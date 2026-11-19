@@ -10,6 +10,29 @@ traceability.
 
 ## [Unreleased]
 
+## [1.0.34] — 2026-11-18
+
+### Fixed
+
+- **Opponent autofill prefers a called set.** In a round-robin pool every pending set
+  exists at once, so a set that had been called was still reported as ambiguous. The
+  order is now: in progress, then called, then the rest.
+
+### Documentation
+
+- The Primetime theme's README lists all five panels, no longer describes pronoun and
+  picker add-ins that Tally does not have, and says the flags come from the theme's own
+  folder. Its manifest no longer declares an `angle` field nothing can set.
+- Code that Tally's actions never reach (the `sync` message, pronouns, the name
+  animation, the outward angle) is marked as kept for themes shared with StreamScoreboard.
+- THEMING.md says which script reads `__SLOT`; the mock no longer cites a file that does
+  not exist; the roster helper's window title says Tally.
+
+### Changed
+
+- `ws` is a development dependency (only the mock and the tests use it), and the docs
+  pin `playwright-core@1.65.1` for the render suite.
+
 ## [1.0.32] — 2026-11-18
 
 ### Changed
@@ -375,6 +398,7 @@ Initial release — Streamer.bot-native tournament scorebug for OBS. (`d90adf2`)
 Primetime theme and roster scrapers vendored from StreamScoreboard (same
 author, MIT).
 
+[1.0.34]: https://github.com/FlashGalatine/tally-scorebug/compare/v1.0.32...v1.0.34
 [1.0.32]: https://github.com/FlashGalatine/tally-scorebug/compare/v1.0.30...v1.0.32
 [1.0.30]: https://github.com/FlashGalatine/tally-scorebug/compare/v1.0.28...v1.0.30
 [1.0.28]: https://github.com/FlashGalatine/tally-scorebug/compare/v1.0.26...v1.0.28
