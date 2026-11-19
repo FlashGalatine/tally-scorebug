@@ -98,6 +98,24 @@
     'seychelles': 'sc', 'sierra leone': 'sl', 'somalia': 'so', 'south africa': 'za',
     'south sudan': 'ss', 'sudan': 'sd', 'tanzania': 'tz', 'togo': 'tg',
     'tunisia': 'tn', 'uganda': 'ug', 'zambia': 'zm', 'zimbabwe': 'zw',
+    // ── Territories and others ───────────────────────────────────────────────
+    // Every flag file the Primetime theme ships has at least one name here, so its
+    // two-letter code is accepted too (a code counts only when the table maps to it).
+    'anguilla': 'ai', 'antarctica': 'aq', 'aland islands': 'ax', 'aland': 'ax',
+    'saint barthelemy': 'bl', 'st barthelemy': 'bl', 'bonaire': 'bq', 'caribbean netherlands': 'bq',
+    'bouvet island': 'bv', 'cocos islands': 'cc', 'keeling islands': 'cc', 'cook islands': 'ck',
+    'clipperton island': 'cp', 'christmas island': 'cx', 'diego garcia': 'dg',
+    'western sahara': 'eh', 'european union': 'eu', 'europe': 'eu', 'falkland islands': 'fk',
+    'french guiana': 'gf', 'guernsey': 'gg', 'south georgia': 'gs', 'heard island': 'hm',
+    'canary islands': 'ic', 'isle of man': 'im', 'british indian ocean territory': 'io',
+    'jersey': 'je', 'saint martin': 'mf', 'st martin': 'mf', 'northern mariana islands': 'mp',
+    'montserrat': 'ms', 'norfolk island': 'nf', 'niue': 'nu', 'saint pierre and miquelon': 'pm',
+    'st pierre and miquelon': 'pm', 'pitcairn': 'pn', 'pitcairn islands': 'pn',
+    'saint helena': 'sh', 'st helena': 'sh', 'svalbard': 'sj', 'svalbard and jan mayen': 'sj',
+    'sint maarten': 'sx', 'turks and caicos': 'tc', 'turks and caicos islands': 'tc',
+    'french southern territories': 'tf', 'tokelau': 'tk', 'us minor outlying islands': 'um',
+    'united nations': 'un', 'british virgin islands': 'vg', 'wallis and futuna': 'wf',
+    'mayotte': 'yt',
   };
 
   // MUST match NormalizeNation() in scoreboard-command.cs exactly.
@@ -112,16 +130,18 @@
   // characters of subdivision flags. MUST match IsEmojiOnly() in the C#.
   function isEmojiOnly(s) {
     if (!s) return false;
+    var visible = false; // a joiner, a variation selector or tag characters alone show nothing
     for (var i = 0; i < s.length; i++) {
       var cp = s.codePointAt(i);
       if (cp >= 0xD800 && cp <= 0xDFFF) return false; // a lone surrogate
       if (cp > 0xFFFF) i++;
-      var ok = (cp >= 0x1F1E6 && cp <= 0x1F1FF) || (cp >= 0x1F300 && cp <= 0x1FAFF)
-        || (cp >= 0x2600 && cp <= 0x27BF) || cp === 0xFE0F || cp === 0x200D
-        || (cp >= 0xE0020 && cp <= 0xE007F);
+      var picture = (cp >= 0x1F1E6 && cp <= 0x1F1FF) || (cp >= 0x1F300 && cp <= 0x1FAFF)
+        || (cp >= 0x2600 && cp <= 0x27BF);
+      var ok = picture || cp === 0xFE0F || cp === 0x200D || (cp >= 0xE0020 && cp <= 0xE007F);
       if (!ok) return false;
+      if (picture) visible = true;
     }
-    return true;
+    return visible;
   }
 
   var ISO_VALUES = {};

@@ -28,6 +28,11 @@
 // applied, absent ones are untouched. Same arg-bleed rationale: "edit both players,
 // click Set once" must be a single DoAction.
 //
+// rid     = OPTIONAL request id (the control panel sends one with every command). When
+//           present, the run ends with a { type:"scoreboard:ack", rid, ok, message }
+//           broadcast: ok=false with the reason when the command was rejected or the
+//           push did not run. The panel waits for it before sending its next command.
+//
 // TEAMS: the scorebug is 2 slots by default. `teams 3` / `teams 4` (clamped 2–4)
 // enables the extra slots — "Scoreboard Push" then includes player3/player4 in every
 // broadcast and the control panel shows their cards. p3/p4 commands always store
@@ -72,17 +77,40 @@ public class CPHInline
     const int NAME_MAX = 64;   // characters kept from a player name
     const int TITLE_MAX = 80;  // characters kept from header / subheader
 
+    string problem;   // why this run changed nothing, or could not broadcast
+    bool pushFailed;  // the change was stored but "Scoreboard Push" did not run
+
     public bool Execute()
     {
+        problem = null; pushFailed = false;
+        bool ok;
         // Nothing here may fail silently: an exception is logged AND broadcast as
         // { type:"scoreboard:error", message }, which the control panel shows.
-        try { return Run(); }
+        try { ok = Run(); }
         catch (Exception ex)
         {
             CPH.LogWarn("[Scoreboard Command] ERROR: " + ex);
-            CPH.WebsocketBroadcastJson("{\"type\":\"scoreboard:error\",\"message\":" + JsonStr("Scoreboard Command: " + ex.Message) + "}");
-            return false;
+            problem = "Scoreboard Command: " + ex.Message;
+            CPH.WebsocketBroadcastJson("{\"type\":\"scoreboard:error\",\"message\":" + JsonStr(problem) + "}");
+            ok = false;
         }
+        // ANSWER: the control panel sends a request id (`rid`) with every command and
+        // waits for { type:"scoreboard:ack", rid, ok, message } before it sends the next.
+        // A scoreboard:update alone cannot tell it whose command ran (chat and other
+        // panels cause updates too), and a rejected command sends no update at all.
+        // Chat and Stream Deck send no rid and get no answer.
+        string rid = Arg("rid", null);
+        if (rid != null)
+            CPH.WebsocketBroadcastJson("{\"type\":\"scoreboard:ack\",\"rid\":" + JsonStr(rid)
+                + ",\"ok\":" + (ok && !pushFailed ? "true" : "false")
+                + ",\"message\":" + JsonStr(ok && !pushFailed ? "" : (problem ?? "The command was rejected; see Streamer.bot's log.")) + "}");
+        return ok;
+    }
+
+    void Warn(string message)
+    {
+        problem = message;
+        CPH.LogWarn("[Scoreboard Command] " + message);
     }
 
     bool Run()
@@ -166,7 +194,10 @@ public class CPHInline
         // Re-scan + re-broadcast to all overlays. Same action the overlay's
         // DoAction-on-connect fires, so live edits and sync share one code path.
         if (!CPH.RunAction("Scoreboard Push"))
-            CPH.LogWarn("[Scoreboard Command] could not run \"Scoreboard Push\" — is that action present, enabled and named exactly so? The change is stored but nothing was broadcast.");
+        {
+            pushFailed = true;
+            Warn("could not run \"Scoreboard Push\" — is that action present, enabled and named exactly so? The change is stored but nothing was broadcast.");
+        }
         return true;
     }
 
@@ -191,13 +222,13 @@ public class CPHInline
         if (h != null) { CPH.SetGlobalVar("sb.header", Cap(h.Trim(), TITLE_MAX, "header"), true); any = true; }
         string sh = Arg("subheader", null);
         if (sh != null) { CPH.SetGlobalVar("sb.subheader", Cap(sh.Trim(), TITLE_MAX, "subheader"), true); any = true; }
-        if (!any) CPH.LogWarn("[Scoreboard Command] setmany carried no fields (expected sibling args pNname/pNflag/header/subheader)");
+        if (!any) Warn("setmany carried no fields (expected sibling args pNname/pNflag/header/subheader)");
         return any;
     }
 
     bool Unknown(string token)
     {
-        CPH.LogWarn("[Scoreboard Command] unknown command: '" + token + "' (expected pN+/pN-/pNscore/pNname/pNflag for N=1-4, or reset/swap/teams/header/subheader)");
+        Warn("unknown command: '" + token + "' (expected pN+/pN-/pNscore/pNname/pNflag for N=1-4, or reset/swap/teams/header/subheader)");
         return false;
     }
 
@@ -205,7 +236,7 @@ public class CPHInline
     // read as 0 (or 2 teams), so a typo wiped a score or hid two players on stream.
     bool BadNumber(string token, string value)
     {
-        CPH.LogWarn("[Scoreboard Command] '" + token + "' needs a whole number, got '" + value + "' — nothing changed");
+        Warn("'" + token + "' needs a whole number, got '" + value + "' — nothing changed");
         return false;
     }
 
@@ -221,23 +252,26 @@ public class CPHInline
     }
 
     // Swaps slots 1↔2 only — with 3-4 teams, re-set names directly instead.
+// Uses CPH.UnsetGlobalVar for a name that was never set.
     void Swap()
     {
-        string n1 = Var("sb.p1name", "Player 1"), n2 = Var("sb.p2name", "Player 2");
+        // A name that was never set is null, and its slot shows a placeholder ("Player 1").
+        // The placeholder is never stored: a set name moves across and the slot it left
+        // goes back to unset, so it shows its own placeholder again.
+        string n1 = CPH.GetGlobalVar<string>("sb.p1name", true), n2 = CPH.GetGlobalVar<string>("sb.p2name", true);
         string f1 = Var("sb.p1flag", ""), f2 = Var("sb.p2flag", "");
         int s1 = Score("sb.p1score"), s2 = Score("sb.p2score");
-        // While neither name has ever been set the slots show their placeholders.
-        // Swapping those would store "Player 2" in slot 1 for good, so leave them.
-        bool namesSet = CPH.GetGlobalVar<string>("sb.p1name", true) != null || CPH.GetGlobalVar<string>("sb.p2name", true) != null;
-        if (namesSet)
-        {
-        CPH.SetGlobalVar("sb.p1name", n2, true);
-        CPH.SetGlobalVar("sb.p2name", n1, true);
-        }
+        SetOrUnset("sb.p1name", n2);
+        SetOrUnset("sb.p2name", n1);
         CPH.SetGlobalVar("sb.p1flag", f2, true);
         CPH.SetGlobalVar("sb.p2flag", f1, true);
         SetScore("sb.p1score", s2);
         SetScore("sb.p2score", s1);
+    }
+
+    void SetOrUnset(string key, string v)
+    {
+        if (v == null) CPH.UnsetGlobalVar(key, true); else CPH.SetGlobalVar(key, v, true);
     }
 
     bool SetFlag(string key, string value)
@@ -245,7 +279,7 @@ public class CPHInline
         string flag = ResolveFlag(value);
         if (flag == null)
         {
-            CPH.LogWarn("[Scoreboard Command] unknown nation: '" + value + "' (use an ISO code like gb/jp, a country name like 'united kingdom', a flag emoji, or 'none' to clear)");
+            Warn("unknown nation: '" + value + "' (use an ISO code like gb/jp, a country name like 'united kingdom', a flag emoji, or 'none' to clear)");
             return false;
         }
         CPH.SetGlobalVar(key, flag, true);
@@ -286,6 +320,7 @@ public class CPHInline
     static bool IsEmojiOnly(string s)
     {
         if (s.Length == 0) return false;
+        bool visible = false; // a joiner, a variation selector or tag characters alone show nothing
         for (int i = 0; i < s.Length; i++)
         {
             int cp = s[i];
@@ -296,12 +331,13 @@ public class CPHInline
                 i++;
             }
             else if (char.IsLowSurrogate(s[i])) return false;
-            bool ok = (cp >= 0x1F1E6 && cp <= 0x1F1FF) || (cp >= 0x1F300 && cp <= 0x1FAFF)
-                || (cp >= 0x2600 && cp <= 0x27BF) || cp == 0xFE0F || cp == 0x200D
-                || (cp >= 0xE0020 && cp <= 0xE007F);
+            bool picture = (cp >= 0x1F1E6 && cp <= 0x1F1FF) || (cp >= 0x1F300 && cp <= 0x1FAFF)
+                || (cp >= 0x2600 && cp <= 0x27BF);
+            bool ok = picture || cp == 0xFE0F || cp == 0x200D || (cp >= 0xE0020 && cp <= 0xE007F);
             if (!ok) return false;
+            if (picture) visible = true;
         }
-        return true;
+        return visible;
     }
 
     // Drop accents: decompose, then remove the combining marks ("Türkiye" → "Turkiye").
@@ -456,6 +492,24 @@ public class CPHInline
         M["seychelles"] = "sc"; M["sierra leone"] = "sl"; M["somalia"] = "so"; M["south africa"] = "za";
         M["south sudan"] = "ss"; M["sudan"] = "sd"; M["tanzania"] = "tz"; M["togo"] = "tg";
         M["tunisia"] = "tn"; M["uganda"] = "ug"; M["zambia"] = "zm"; M["zimbabwe"] = "zw";
+        // Territories and others
+        M["anguilla"] = "ai"; M["antarctica"] = "aq"; M["aland islands"] = "ax"; M["aland"] = "ax";
+        M["saint barthelemy"] = "bl"; M["st barthelemy"] = "bl"; M["bonaire"] = "bq";
+        M["caribbean netherlands"] = "bq"; M["bouvet island"] = "bv"; M["cocos islands"] = "cc";
+        M["keeling islands"] = "cc"; M["cook islands"] = "ck"; M["clipperton island"] = "cp";
+        M["christmas island"] = "cx"; M["diego garcia"] = "dg"; M["western sahara"] = "eh";
+        M["european union"] = "eu"; M["europe"] = "eu"; M["falkland islands"] = "fk";
+        M["french guiana"] = "gf"; M["guernsey"] = "gg"; M["south georgia"] = "gs";
+        M["heard island"] = "hm"; M["canary islands"] = "ic"; M["isle of man"] = "im";
+        M["british indian ocean territory"] = "io"; M["jersey"] = "je"; M["saint martin"] = "mf";
+        M["st martin"] = "mf"; M["northern mariana islands"] = "mp"; M["montserrat"] = "ms";
+        M["norfolk island"] = "nf"; M["niue"] = "nu"; M["saint pierre and miquelon"] = "pm";
+        M["st pierre and miquelon"] = "pm"; M["pitcairn"] = "pn"; M["pitcairn islands"] = "pn";
+        M["saint helena"] = "sh"; M["st helena"] = "sh"; M["svalbard"] = "sj";
+        M["svalbard and jan mayen"] = "sj"; M["sint maarten"] = "sx"; M["turks and caicos"] = "tc";
+        M["turks and caicos islands"] = "tc"; M["french southern territories"] = "tf";
+        M["tokelau"] = "tk"; M["us minor outlying islands"] = "um"; M["united nations"] = "un";
+        M["british virgin islands"] = "vg"; M["wallis and futuna"] = "wf"; M["mayotte"] = "yt";
         return M;
     }
 }

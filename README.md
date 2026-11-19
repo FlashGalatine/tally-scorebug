@@ -364,6 +364,9 @@ requests that arrive together all run with the last one's arguments;
   name + flag in one call. Updating only the panel still fixes the name (the flag just
   stops riding along until the C# is re-pasted).
 - **Import fails with "helper not running"** → start the roster helper (see above).
+- **A command shows "Streamer.bot: …" in the panel** → that is the reason Scoreboard
+  Command gave for changing nothing (or for not broadcasting). The same line is in
+  Streamer.bot → Logs.
 - **Import says "an older roster helper is still running"** → a helper from before an
   update still holds port 7481. Stop it (close its window, or end its `node.exe` in Task
   Manager; the newer helper also accepts `POST /shutdown`) and start the new one.

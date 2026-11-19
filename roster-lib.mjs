@@ -52,8 +52,16 @@ export async function loadConfig() {
   return {
     challongeApiKey: cleanKey('challongeApiKey', process.env.CHALLONGE_API_KEY || cfg.challongeApiKey),
     startggApiKey: cleanKey('startggApiKey', process.env.STARTGG_API_KEY || cfg.startggApiKey),
-    rosterAllowedOrigins: Array.isArray(cfg.rosterAllowedOrigins) ? cfg.rosterAllowedOrigins.map(String) : [],
+    rosterAllowedOrigins: originList(cfg.rosterAllowedOrigins),
   };
+}
+
+// A list of addresses, or one string (comma separated, like the environment variable).
+function originList(v) {
+  if (v == null) return [];
+  if (typeof v === 'string') return v.split(',').map((s) => s.trim()).filter(Boolean);
+  if (Array.isArray(v)) return v.map(String);
+  throw new Error('rosterAllowedOrigins in config.json must be a list of addresses, for example ["http://127.0.0.1:7480"].');
 }
 
 // A key is printable ASCII with no spaces. Anything else (a stray line break pasted

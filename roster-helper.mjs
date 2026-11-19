@@ -16,7 +16,8 @@
 //
 // WHO MAY CALL IT. The helper holds your API keys and overwrites roster.json, so it
 // does not answer every web page:
-//   • a request that names an Origin must name an allowed one. Allowed by default:
+//   • a request that names an Origin must name an allowed one (any other gets a 403
+//     that says so, and nothing else). Allowed by default:
 //     http://127.0.0.1:7474 and http://localhost:7474 (the control panel on
 //     Streamer.bot's HTTP server). Add more with ROSTER_ALLOWED_ORIGINS (comma
 //     separated) or "rosterAllowedOrigins" in config.json, e.g. when you moved SB's
@@ -92,7 +93,11 @@ const server = createServer(async (req, res) => {
   const allowed = await allowedOrigins();
   if (origin && !allowed.includes(origin)) {
     console.log(`[roster] refused a request from origin ${origin}`);
-    return send(res, 403, { ok: false, error: `Origin ${origin} is not allowed to use the roster helper. Add it to ROSTER_ALLOWED_ORIGINS or "rosterAllowedOrigins" in config.json if it is your control panel.` });
+    // This one answer carries the CORS header, so a control panel on an address that
+    // is not allowed can read WHY it was refused. Without it the browser hides the
+    // reply and the panel can only say "helper not running". Nothing else is exposed:
+    // every other answer to this origin is this same refusal.
+    return send(res, 403, { ok: false, error: `Origin ${origin} is not allowed to use the roster helper. Add it to ROSTER_ALLOWED_ORIGINS or "rosterAllowedOrigins" in config.json if it is your control panel.` }, origin);
   }
   // 3. A cross-site browser request that carries no Origin (an <img>, a plain form).
   if (!origin && String(req.headers['sec-fetch-site'] || '').toLowerCase() === 'cross-site') {

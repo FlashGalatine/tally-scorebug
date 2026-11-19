@@ -13,7 +13,7 @@ third-party material:
 ## Third-party files included in this repository
 
 - **flag-icons** v7.2.3 — <https://github.com/lipis/flag-icons> (MIT © Panayiotis
-  Lipiridis). The 257 two-letter country flags (4x3 SVG), unmodified, in
+  Lipiridis). The 257 two-letter country flags and the England, Scotland and Wales flags (4x3 SVG), unmodified, in
   `tally-themes/primetime/flags/`. Licence text: `tally-themes/primetime/flags/LICENSE.txt`.
 - **Quantico** typeface — © 2011 Matthew Desmond, SIL Open Font License 1.1. The Latin
   400 and 700 weights as WOFF2, from the `@fontsource/quantico` 5.3.0 package, in

@@ -19,11 +19,16 @@ const TOURNAMENT_STORE_RE = /window\._initialStoreState\['TournamentStore'\]\s*=
 const RESERVED = new Set(['tournaments', 'communities', 'users', 'events', 'teams', 'games', 'search',
   'settings', 'session', 'user_session', 'dashboard', 'about', 'pricing', 'api', 'module']);
 
+// Pages under a bracket ("/mytourney/standings"). When one of these follows a
+// two-letter first segment, that segment is the bracket, not a language.
+const SUBPAGES = new Set(['standings', 'participants', 'module', 'log', 'discussion', 'stations',
+  'announcements', 'settings', 'matches', 'groups', 'predictions', 'attachments', 'registrations']);
+
 // The bracket slug in a challonge.com URL, or null. A leading locale segment
 // ("/fr/mytourney", "/pt_BR/mytourney") is skipped; Challonge's own pages are refused.
 export function challongeSlug(url) {
   const segs = url.pathname.split('/').filter(Boolean);
-  if (segs.length >= 2 && /^[a-z]{2}([_-][a-z]{2})?$/i.test(segs[0])) segs.shift();
+  if (segs.length >= 2 && /^[a-z]{2}([_-][a-z]{2})?$/i.test(segs[0]) && !SUBPAGES.has(segs[1].toLowerCase())) segs.shift();
   const slug = segs[0];
   if (!slug || RESERVED.has(slug.toLowerCase())) return null;
   return slug;

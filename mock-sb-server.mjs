@@ -132,8 +132,11 @@ function applyCommand(args) {
   switch (cmd) {
     case 'reset': for (let i = 1; i <= 4; i++) state['p' + i + 'score'] = 0; break;
     case 'swap': { // slots 1↔2 only, matching the C#
-      // While neither name was ever set, the placeholders stay where they are.
-      if (named[1] || named[2]) { const n = state.p1name; state.p1name = state.p2name; state.p2name = n; named[1] = named[2] = true; }
+      // A set name moves across; a slot whose name was never set stays unset and shows
+      // its own placeholder (the C# unsets the global).
+      const n1 = named[1] ? state.p1name : null, n2 = named[2] ? state.p2name : null;
+      state.p1name = n2 == null ? 'Player 1' : n2; state.p2name = n1 == null ? 'Player 2' : n1;
+      const was1 = named[1]; named[1] = named[2]; named[2] = was1;
       const s = state.p1score; state.p1score = state.p2score; state.p2score = s;
       const f = state.p1flag; state.p1flag = state.p2flag; state.p2flag = f;
       break;
@@ -258,13 +261,27 @@ const http = createServer(async (req, res) => {
     return;
   }
   // /mock/missing?name=<action>&on=1|0  pretend an action is not imported.
-  // /mock/oldcs?on=1|0                   pretend Scoreboard Command predates `setmany`.
+  // /mock/oldcs?on=1|0                   pretend Scoreboard Command predates `setmany` and the scoreboard:ack answer.
   // /mock/error?message=…                broadcast a scoreboard:error, as the Push action does on an exception.
   if (path === '/mock/missing') {
     const name = query.get('name') || '';
     if (query.get('on') === '1') missingActions.add(name); else missingActions.delete(name);
     res.writeHead(200, { 'content-type': 'application/json' });
     res.end(JSON.stringify({ missing: [...missingActions] }));
+    return;
+  }
+  // /mock/throw?on=1|0   Scoreboard Command throws (scoreboard:error, no update).
+  // /mock/slow?ms=<n>     Scoreboard Command takes <n> ms to run (0 = off).
+  if (path === '/mock/throw') {
+    if (query.has('on')) throwCmd = query.get('on') === '1';
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ throwCmd }));
+    return;
+  }
+  if (path === '/mock/slow') {
+    if (query.has('ms')) slowMs = Math.max(0, Number(query.get('ms')) || 0);
+    res.writeHead(200, { 'content-type': 'application/json' });
+    res.end(JSON.stringify({ slowMs }));
     return;
   }
   if (path === '/mock/oldcs') {
@@ -368,12 +385,32 @@ const pendingByAction = new Map(); // name → [{ args }]
 const runLog = [];                 // [{ action, token, bled }] newest last
 let totalRuns = 0, totalBroadcasts = 0;
 
-function runAction(name, args, bled) {
+let throwCmd = false; // Scoreboard Command throws: scoreboard:error, no update
+let slowMs = 0;       // Scoreboard Command takes this long to run
+function sendCustom(data) {
+  const msg = customEvent(data);
+  for (const ws of clients) { if (ws.subscribedCustom) { try { ws.send(msg); } catch {} } }
+}
+
+function runAction(name, args, bled, delayed) {
+  if (name === 'Scoreboard Command' && slowMs && !delayed) { setTimeout(() => runAction(name, args, bled, true), slowMs); return; }
   totalRuns++;
+  if (name === 'Scoreboard Command' && throwCmd) {
+    runLog.push({ action: name, token: resolveCommand(args).token, bled: !!bled });
+    sendCustom({ type: 'scoreboard:error', message: 'Scoreboard Command: mock exception' });
+    if (args && args.rid != null && !oldCs) sendCustom({ type: 'scoreboard:ack', rid: String(args.rid), ok: false, message: 'Scoreboard Command: mock exception' });
+    return;
+  }
   if (name === 'Scoreboard Command') {
     runLog.push({ action: name, token: resolveCommand(args).token, bled: !!bled });
     // The C# returns false before the push on a rejected command: no broadcast at all.
-    if (applyCommand(args)) broadcast();
+    const ok = applyCommand(args);
+    if (ok) broadcast();
+    // The answer the control panel waits for (an older pasted action sends none).
+    if (args && args.rid != null && !oldCs) {
+      const ack = customEvent({ type: 'scoreboard:ack', rid: String(args.rid), ok, message: ok ? '' : 'the mock rejected that command' });
+      for (const ws of clients) { if (ws.subscribedCustom) { try { ws.send(ack); } catch {} } }
+    }
   } else {
     runLog.push({ action: name, bled: !!bled });
     broadcast(); // "Scoreboard Push" uses WebsocketBroadcastJson: every subscriber gets it

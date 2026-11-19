@@ -137,3 +137,33 @@ test('countries the old import table lacked now resolve; non-countries do not', 
   for (const not of ['', null, 'jp', 'zz', 'Narnia', 'constructor', 'toString']) assert.equal(flagEmojiForCountry(not), null, String(not));
   assert.equal(typeof startgg.fetchOpponent, 'function');
 });
+
+// Review fixes (Release after 1.0.34).
+test('Challonge: a two-letter bracket name is not taken for a language prefix', async () => {
+  const { challongeSlug } = await import('./roster/platforms/challonge.js');
+  const slug = (u) => challongeSlug(new URL(u));
+  assert.equal(slug('https://challonge.com/ab/standings'), 'ab');
+  assert.equal(slug('https://challonge.com/ab/participants'), 'ab');
+  assert.equal(slug('https://challonge.com/ab'), 'ab');
+  assert.equal(slug('https://challonge.com/fr/mytourney'), 'mytourney');
+  assert.equal(slug('https://challonge.com/fr/mytourney/standings'), 'mytourney');
+  assert.equal(slug('https://challonge.com/pt_BR/mytourney'), 'mytourney');
+});
+
+test('every flag file the Primetime theme ships can be typed as its two-letter code', async () => {
+  await import('./tally-shared/nations.js');
+  const { readdir } = await import('node:fs/promises');
+  const { resolveFlag, isoToEmoji, isEmojiOnly } = globalThis.Nations;
+  const files = await readdir(new URL('./tally-themes/primetime/flags/', import.meta.url));
+  const codes = files.map((f) => /^([a-z]{2})\.svg$/.exec(f)).filter(Boolean).map((m) => m[1]);
+  assert.ok(codes.length >= 250, 'the flag folder is there');
+  // flag-icons' own extras with no flag emoji: xx (unknown) and pc (Pacific Community).
+  const refused = codes.filter((c) => c !== 'xx' && c !== 'pc' && resolveFlag(c) !== isoToEmoji(c));
+  assert.deepEqual(refused, []);
+  assert.equal(resolveFlag('isle of man'), isoToEmoji('im'));
+  assert.equal(resolveFlag('zz'), null, 'two letters that are no code are still refused');
+  for (const sub of ['gb-eng', 'gb-sct', 'gb-wls']) assert.ok(files.includes(sub + '.svg'), sub + '.svg is shipped');
+  assert.equal(isEmojiOnly('\u200D'), false, 'a joiner alone shows nothing');
+  assert.equal(isEmojiOnly('\uFE0F'), false);
+  assert.equal(isEmojiOnly('\u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}'), true, 'England');
+});
