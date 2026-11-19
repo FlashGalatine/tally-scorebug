@@ -7,10 +7,12 @@
 //
 // resolveFlag(input) accepts, in priority order:
 //   ''            → ''    (clear the flag)  — also 'none' | 'clear' | 'off' | 'remove'
-//   any non-ASCII → as-is (already a flag emoji like 🇬🇧, or a specialty flag like 🏴‍☠️)
-//   a known name/alias ('uk', 'britain', 'great britain', 'united kingdom', …) → emoji
-//   a bare ISO-3166 alpha-2 code ('gb', 'jp') → emoji
-//   anything else → null (unknown — callers warn and change nothing)
+//   flag/emoji only → as-is (a flag emoji like 🇬🇧, or a specialty flag like 🏴‍☠️)
+//   a known name/alias, with or without accents ('uk', 'britain', 'Türkiye', …) → emoji
+//   a two-letter code the table maps to ('gb', 'jp') → emoji
+//   anything else → null (unknown — callers warn and change nothing). That includes two
+//   letters that are no known code ('zz'), accented text that is no nation ('café'), and
+//   an emoji mixed with other text.
 //
 // The name list extends StreamScoreboard's country list (same author/MIT) with more
 // countries, territories, and colloquial aliases. Keys are stored PRE-NORMALIZED:
@@ -99,8 +101,34 @@
   };
 
   // MUST match NormalizeNation() in scoreboard-command.cs exactly.
+  // Drop accents: decompose, then remove the combining marks ("Türkiye" → "Turkiye").
+  // MUST match Fold() in actions/scoreboard-command.cs.
+  function fold(s) {
+    return String(s || '').normalize('NFD').replace(/\p{Mn}/gu, '');
+  }
+
+  // True when every code point belongs to a flag or emoji sequence: regional
+  // indicators, the emoji blocks, the variation selector, the joiner, and the tag
+  // characters of subdivision flags. MUST match IsEmojiOnly() in the C#.
+  function isEmojiOnly(s) {
+    if (!s) return false;
+    for (var i = 0; i < s.length; i++) {
+      var cp = s.codePointAt(i);
+      if (cp >= 0xD800 && cp <= 0xDFFF) return false; // a lone surrogate
+      if (cp > 0xFFFF) i++;
+      var ok = (cp >= 0x1F1E6 && cp <= 0x1F1FF) || (cp >= 0x1F300 && cp <= 0x1FAFF)
+        || (cp >= 0x2600 && cp <= 0x27BF) || cp === 0xFE0F || cp === 0x200D
+        || (cp >= 0xE0020 && cp <= 0xE007F);
+      if (!ok) return false;
+    }
+    return true;
+  }
+
+  var ISO_VALUES = {};
+  Object.keys(MAP).forEach(function (k) { ISO_VALUES[MAP[k]] = true; });
+
   function normalize(s) {
-    return String(s || '')
+    return fold(s)
       .toLowerCase()
       .replace(/['’.]/g, '')
       .replace(/&/g, ' and ')
@@ -121,15 +149,17 @@
     if (!raw) return '';
     var lower = raw.toLowerCase();
     if (lower === 'none' || lower === 'clear' || lower === 'off' || lower === 'remove') return '';
-    for (var i = 0; i < raw.length; i++) if (raw.charCodeAt(i) > 127) return raw; // emoji passthrough
+    if (isEmojiOnly(raw)) return raw; // already a flag / emoji — pass through
     var key = normalize(raw);
     // Own keys only: MAP is a plain object, so "constructor" or "toString" would
     // otherwise find an inherited function and throw in isoToEmoji.
     var iso = Object.prototype.hasOwnProperty.call(MAP, key) ? MAP[key] : null;
     if (iso) return isoToEmoji(iso);
-    if (/^[a-z]{2}$/.test(key)) return isoToEmoji(key); // bare ISO code
+    // A bare two-letter code counts only when the table maps to it, so a typo such as
+    // "zz" or "en" is unknown instead of becoming a flag that does not exist.
+    if (/^[a-z]{2}$/.test(key) && ISO_VALUES[key] === true) return isoToEmoji(key);
     return null;
   }
 
-  root.Nations = { MAP: MAP, normalize: normalize, isoToEmoji: isoToEmoji, resolveFlag: resolveFlag };
+  root.Nations = { MAP: MAP, normalize: normalize, fold: fold, isEmojiOnly: isEmojiOnly, isoToEmoji: isoToEmoji, resolveFlag: resolveFlag };
 })(typeof window !== 'undefined' ? window : globalThis);

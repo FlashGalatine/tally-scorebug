@@ -64,6 +64,7 @@ const state = {
 // control panel applies name + flag in ONE DoAction (SB 1.0.4 arg-bleeds bursts).
 // `extra` is the full args object — `setmany` reads its per-field sibling args
 // (pNname/pNflag/header/subheader) from it, one batched DoAction for many fields.
+const named = { 1: false, 2: false, 3: false, 4: false }; // has slot N's name ever been set (the C#'s global is null until then)
 const KNOWN = new Set(['reset', 'swap', 'teams', 'header', 'subheader', 'setmany']);
 for (let i = 1; i <= 4; i++) for (const op of ['+', '-', 'score', 'name', 'flag']) KNOWN.add('p' + i + op);
 
@@ -108,15 +109,18 @@ function applyCommand(args) {
   const flag = args && args.flag;
   const extra = args;
   const clamp = (n, lo = 0, hi = 99) => Math.max(lo, Math.min(hi, n));
+  // Cap(): names 64, titles 80 UTF-16 units, never through a surrogate pair.
+  const cap = (s, max) => { if (s.length <= max) return s; let cut = max; const c = s.charCodeAt(cut - 1); if (c >= 0xD800 && c <= 0xDBFF) cut--; return s.slice(0, cut); };
+  const NAME_MAX = 64, TITLE_MAX = 80;
   const pn = /^p([1-4])(\+|-|score|name|flag)$/.exec(cmd);
   if (pn) {
     const [, n, op] = pn;
     switch (op) {
       case '+': state['p' + n + 'score'] = clamp(state['p' + n + 'score'] + 1); break;
       case '-': state['p' + n + 'score'] = clamp(state['p' + n + 'score'] - 1); break;
-      case 'score': state['p' + n + 'score'] = clamp(parseIntCs(val, 0)); break;
+      case 'score': { const v = parseIntCs(val, null); if (v === null) return false; state['p' + n + 'score'] = clamp(v); break; } // not a whole number: rejected
       case 'name': {
-        state['p' + n + 'name'] = val;
+        state['p' + n + 'name'] = cap(val, NAME_MAX); named[n] = true;
         // A bad flag only warns in the C# — the name still applies.
         if (flag != null) { const f = resolveFlag(String(flag)); if (f != null) state['p' + n + 'flag'] = f; }
         break;
@@ -128,24 +132,25 @@ function applyCommand(args) {
   switch (cmd) {
     case 'reset': for (let i = 1; i <= 4; i++) state['p' + i + 'score'] = 0; break;
     case 'swap': { // slots 1↔2 only, matching the C#
-      const n = state.p1name; state.p1name = state.p2name; state.p2name = n;
+      // While neither name was ever set, the placeholders stay where they are.
+      if (named[1] || named[2]) { const n = state.p1name; state.p1name = state.p2name; state.p2name = n; named[1] = named[2] = true; }
       const s = state.p1score; state.p1score = state.p2score; state.p2score = s;
       const f = state.p1flag; state.p1flag = state.p2flag; state.p2flag = f;
       break;
     }
-    case 'teams': state.teams = clamp(parseIntCs(val, 2), 2, 4); break;
-    case 'header': state.header = val; break;
-    case 'subheader': state.subheader = val; break;
+    case 'teams': { const v = parseIntCs(val, null); if (v === null) return false; state.teams = clamp(v, 2, 4); break; }
+    case 'header': state.header = cap(val, TITLE_MAX); break;
+    case 'subheader': state.subheader = cap(val, TITLE_MAX); break;
     case 'setmany': { // mirror of the C# SetMany(): apply every present field, bad flags skip
       if (oldCs) return false; // an older pasted action: unknown command, no push
       const a = extra || {};
       let any = false;
       for (let i = 1; i <= 4; i++) {
-        if (a['p' + i + 'name'] != null) { state['p' + i + 'name'] = String(a['p' + i + 'name']).trim(); any = true; }
+        if (a['p' + i + 'name'] != null) { state['p' + i + 'name'] = cap(String(a['p' + i + 'name']).trim(), NAME_MAX); named[i] = true; any = true; }
         if (a['p' + i + 'flag'] != null) { const f = resolveFlag(String(a['p' + i + 'flag'])); if (f != null) state['p' + i + 'flag'] = f; any = true; }
       }
-      if (a.header != null) { state.header = String(a.header).trim(); any = true; }
-      if (a.subheader != null) { state.subheader = String(a.subheader).trim(); any = true; }
+      if (a.header != null) { state.header = cap(String(a.header).trim(), TITLE_MAX); any = true; }
+      if (a.subheader != null) { state.subheader = cap(String(a.subheader).trim(), TITLE_MAX); any = true; }
       return any;
     }
     default: return false;

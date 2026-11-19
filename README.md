@@ -115,13 +115,13 @@ Everything runs through the one parametric `Scoreboard Command` action:
 | `command` | `value` | Effect |
 |---|---|---|
 | `p1+` `p1-` `p2+` `p2-` | — | score ±1 (clamped 0–99) |
-| `p1score` `p2score` | number | set a score directly |
+| `p1score` `p2score` | whole number | set a score directly (anything else is rejected: `1o`, `5.5` or nothing changes no score) |
 | `reset` | — | all scores → 0 |
 | `swap` | — | swap players 1 and 2 (name + score + flag) |
 | `p1name` `p2name` | text | set a name — `Sponsor \| Player` renders as a sponsor plate |
 | `p1flag` `p2flag` | nation | set the nationality flag (see below) |
 | `header` `subheader` | text | match title / subtitle |
-| `teams` | 2–4 | enable/disable the optional 3rd and 4th slots (see below) |
+| `teams` | 2–4 | enable/disable the optional 3rd and 4th slots (see below); not a number → rejected |
 
 Every `p1`/`p2` command also exists as `p3`/`p4` (`p3+`, `p4name`, `p3flag`, …) — they
 drive the extra slots of teams mode.
@@ -179,12 +179,18 @@ Tips for counter use: scores clamp at 0–99; leave the flag unset and the flag 
 collapses; mod-only counting works by restricting the chat command's permission in
 Streamer.bot (or skipping chat triggers entirely and using the deck/control panel).
 
-**Flags & nation aliases.** A nation can be an ISO-3166 code (`jp`, `gb`, `fr`), one of
-~260 country names/aliases (`japan`, `uk`, `britain`, `great britain`, `united kingdom`,
-`usa`, `america`, `holland`, …), a flag emoji pasted directly (covers 🏴‍☠️ and friends), or
-`none`/`clear` to remove. Values resolve to the flag emoji internally and the theme renders
-real SVG flags (flag-icons). Unknown nations are rejected with a warning in SB → Logs, so a
-typo can't blank the panel. The alias table lives in [`tally-shared/nations.js`](tally-shared/nations.js)
+**Flags & nation aliases.** A nation can be an ISO-3166 code the table knows (`jp`, `gb`,
+`fr`), one of ~260 country names/aliases with or without accents (`japan`, `uk`, `britain`,
+`great britain`, `united kingdom`, `usa`, `america`, `holland`, `Türkiye`, …), a flag emoji
+pasted directly (covers 🏴‍☠️ and friends), or `none`/`clear` to remove. Values
+resolve to the flag emoji internally and the theme renders real SVG flags (flag-icons).
+Everything else is rejected with a warning in SB → Logs, so a typo can't blank the panel:
+an unknown name, two letters that are no known code (`zz`), or text that is not an emoji.
+
+**Lengths.** Names are cut to 64 characters and the header and subheader to 80, so a chat
+command cannot flood the overlay.
+
+The alias table lives in [`tally-shared/nations.js`](tally-shared/nations.js)
 with a mechanical copy in the C# — `npm run verify` diffs the two so they can't drift.
 
 **Chat styles.** Either one dispatch command (`!sb p1+` — a single trigger handles
@@ -252,7 +258,8 @@ import time unless opponent autofill is enabled). **Keep the helper running whil
 using opponent autofill** so each selection reads fresh start.gg data. Start it any
 of three ways, no terminal required:
 
-- **From Streamer.bot (automatic):** third action `Roster Helper` with
+- **From Streamer.bot (automatic, it checks the port first and says in SB → Logs whether
+  the helper came up):** third action `Roster Helper` with
   [`actions/streamerbot-roster-helper.cs`](actions/streamerbot-roster-helper.cs) — edit
   `BUNDLE`, add **`System.dll`** in the C# editor's **References** tab (required — see the
   file header), Compile, and give it your SB's application-started trigger.
@@ -304,6 +311,8 @@ panels with zero setup: drive state with the console keys (`q/a` P1 ±, `w/s` P2
 reset, `x` swap) or `GET /mock/cmd?command=p1+`. `npm run verify:render` (needs
 `npm i --no-save playwright-core`) renders the real theme headless and checks pixels;
 `npm run shots` regenerates the screenshots above.
+`npm run verify:cs` (Windows) compiles the real C# actions with the .NET Framework
+compiler and runs their logic against a stand-in for Streamer.bot's `CPH` object.
 `npm run verify:opponent` checks roster identity and opponent selection against
 offline start.gg fixtures; `verify:render` also covers the two-slot autofill flow,
 manual overrides, and late lookup responses.
@@ -326,7 +335,8 @@ requests that arrive together all run with the last one's arguments;
   with auth off (or that every panel URL carries a matching `?sbport=`, if you moved it),
   and that the action is named exactly `Scoreboard Push` and **compiles**
   (`DoAction` returning ok only means the action was *queued* — a compile error broadcasts
-  nothing). On error the actions broadcast `{ type:'scoreboard:error', message }`.
+  nothing). On an exception either action broadcasts `{ type:'scoreboard:error', message }`,
+  which the control panel shows under its connection status.
 - **`Uri`/`Process`/`Newtonsoft` "does not exist" when writing your own actions** → SB
   (a .NET Framework 4.7.2 app) resolves a minimal default reference set. Add `System.dll`
   (or SB's own `Newtonsoft.Json.dll`) in the C# editor's **References** tab. Tally's two

@@ -813,8 +813,8 @@ async function verifyOffline(browser) {
     type === 'application/octet-stream' && plain === 0, type + ' / naturalWidth ' + plain);
 
   // A code with no file hides the cell instead of leaving an empty plate.
-  await fetch(`${BASE}/mock/cmd?command=p1flag&value=zz`);
-  check('a two-letter code with no flag file hides the flag cell',
+  await fetch(`${BASE}/mock/cmd?command=p1flag&value=${encodeURIComponent('\u{1F1FF}\u{1F1FF}')}`); // the regional-indicator pair "ZZ"
+  check('a flag emoji with no picture file hides the flag cell',
     await strip.waitForFunction(() => document.getElementById('flag-cell').classList.contains('hidden'), null, { timeout: 4000 }).then(() => true).catch(() => false));
   await fetch(`${BASE}/mock/cmd?command=p1flag&value=gb`);
   check('…and a real code brings it back',

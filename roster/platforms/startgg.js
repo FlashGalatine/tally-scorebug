@@ -22,8 +22,7 @@ import '../../tally-shared/nations.js'; // side effect: globalThis.Nations, the 
 // two-letter string or an unknown name from a profile is not a flag.
 export function flagEmojiForCountry(name) {
   const { MAP, normalize, isoToEmoji } = globalThis.Nations;
-  const plain = String(name || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  const key = normalize(plain);
+  const key = normalize(name); // folds accents, as the panel and the C# do
   return key && Object.prototype.hasOwnProperty.call(MAP, key) ? isoToEmoji(MAP[key]) : null;
 }
 

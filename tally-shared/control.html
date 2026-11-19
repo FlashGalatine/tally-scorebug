@@ -72,28 +72,28 @@
 
   <div class="card p1">
     <h2>Player 1</h2>
-    <div class="row"><span class="ta"><input type="text" id="p1name" placeholder="Player 1 name" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="p1suggest"><ul class="suggest" id="p1suggest" role="listbox" hidden></ul></span><button class="set" data-set="p1name" data-src="p1name">Set</button></div>
+    <div class="row"><span class="ta"><input type="text" id="p1name" maxlength="64" placeholder="Player 1 name" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="p1suggest"><ul class="suggest" id="p1suggest" role="listbox" hidden></ul></span><button class="set" data-set="p1name" data-src="p1name">Set</button></div>
     <div class="row"><input type="text" id="p1flag" placeholder="Flag &mdash; jp, japan, or emoji" autocomplete="off"><span class="flagprev" id="p1flagprev">&mdash;</span><button class="set" data-set="p1flag" data-src="p1flag">Set</button></div>
     <div class="row score"><span class="tag">P1</span><button class="bump" data-cmd="p1-">&minus;</button><span class="val" id="p1score">0</span><button class="bump" data-cmd="p1+">+</button></div>
   </div>
 
   <div class="card p2">
     <h2>Player 2</h2>
-    <div class="row"><span class="ta"><input type="text" id="p2name" placeholder="Player 2 name" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="p2suggest"><ul class="suggest" id="p2suggest" role="listbox" hidden></ul></span><button class="set" data-set="p2name" data-src="p2name">Set</button></div>
+    <div class="row"><span class="ta"><input type="text" id="p2name" maxlength="64" placeholder="Player 2 name" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="p2suggest"><ul class="suggest" id="p2suggest" role="listbox" hidden></ul></span><button class="set" data-set="p2name" data-src="p2name">Set</button></div>
     <div class="row"><input type="text" id="p2flag" placeholder="Flag &mdash; jp, japan, or emoji" autocomplete="off"><span class="flagprev" id="p2flagprev">&mdash;</span><button class="set" data-set="p2flag" data-src="p2flag">Set</button></div>
     <div class="row score"><span class="tag">P2</span><button class="bump" data-cmd="p2-">&minus;</button><span class="val" id="p2score">0</span><button class="bump" data-cmd="p2+">+</button></div>
   </div>
 
   <div class="card p3 hide" id="card-p3">
     <h2>Player 3</h2>
-    <div class="row"><span class="ta"><input type="text" id="p3name" placeholder="Player 3 name" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="p3suggest"><ul class="suggest" id="p3suggest" role="listbox" hidden></ul></span><button class="set" data-set="p3name" data-src="p3name">Set</button></div>
+    <div class="row"><span class="ta"><input type="text" id="p3name" maxlength="64" placeholder="Player 3 name" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="p3suggest"><ul class="suggest" id="p3suggest" role="listbox" hidden></ul></span><button class="set" data-set="p3name" data-src="p3name">Set</button></div>
     <div class="row"><input type="text" id="p3flag" placeholder="Flag &mdash; jp, japan, or emoji" autocomplete="off"><span class="flagprev" id="p3flagprev">&mdash;</span><button class="set" data-set="p3flag" data-src="p3flag">Set</button></div>
     <div class="row score"><span class="tag">P3</span><button class="bump" data-cmd="p3-">&minus;</button><span class="val" id="p3score">0</span><button class="bump" data-cmd="p3+">+</button></div>
   </div>
 
   <div class="card p4 hide" id="card-p4">
     <h2>Player 4</h2>
-    <div class="row"><span class="ta"><input type="text" id="p4name" placeholder="Player 4 name" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="p4suggest"><ul class="suggest" id="p4suggest" role="listbox" hidden></ul></span><button class="set" data-set="p4name" data-src="p4name">Set</button></div>
+    <div class="row"><span class="ta"><input type="text" id="p4name" maxlength="64" placeholder="Player 4 name" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="p4suggest"><ul class="suggest" id="p4suggest" role="listbox" hidden></ul></span><button class="set" data-set="p4name" data-src="p4name">Set</button></div>
     <div class="row"><input type="text" id="p4flag" placeholder="Flag &mdash; jp, japan, or emoji" autocomplete="off"><span class="flagprev" id="p4flagprev">&mdash;</span><button class="set" data-set="p4flag" data-src="p4flag">Set</button></div>
     <div class="row score"><span class="tag">P4</span><button class="bump" data-cmd="p4-">&minus;</button><span class="val" id="p4score">0</span><button class="bump" data-cmd="p4+">+</button></div>
   </div>
@@ -109,8 +109,8 @@
 
   <div class="card">
     <h2>Match</h2>
-    <div class="row"><input type="text" id="header" placeholder="Header (e.g. Capcom Cup)" autocomplete="off"><button class="set" data-set="header" data-src="header">Set</button></div>
-    <div class="row"><input type="text" id="subheader" placeholder="Subheader (e.g. Grand Finals &middot; FT5)" autocomplete="off"><button class="set" data-set="subheader" data-src="subheader">Set</button></div>
+    <div class="row"><input type="text" id="header" maxlength="80" placeholder="Header (e.g. Capcom Cup)" autocomplete="off"><button class="set" data-set="header" data-src="header">Set</button></div>
+    <div class="row"><input type="text" id="subheader" maxlength="80" placeholder="Subheader (e.g. Grand Finals &middot; FT5)" autocomplete="off"><button class="set" data-set="subheader" data-src="subheader">Set</button></div>
   </div>
 
   <div class="card">

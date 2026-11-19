@@ -302,13 +302,22 @@ async function main() {
     const score = async (v) => (await run([raw, CMD, { command: 'p1score', value: v }])).state.p1score;
     check("p1score '7' → 7", await score('7') === 7);
     check("p1score ' 8 ' → 8 (surrounding spaces)", await score(' 8 ') === 8);
-    check("p1score '5.5' → 0 (C# rejects it; JS parseInt would say 5)", await score('5.5') === 0);
+    // Not a whole number: rejected, nothing changes, nothing is broadcast (TAL-06).
     await score('7');
-    check("p1score '12abc' → 0 (JS parseInt would say 12)", await score('12abc') === 0);
+    for (const bad of ['5.5', '12abc', '1o', '', '100000000000']) {
+      const r = await run([raw, CMD, { command: 'p1score', value: bad }]);
+      check(`p1score '${bad}' is rejected: score stays 7, no broadcast`, r.state.p1score === 7 && r.broadcasts === 0, JSON.stringify({ score: r.state.p1score, broadcasts: r.broadcasts }));
+    }
     check("p1score '100' → clamped to 99", await score('100') === 99);
     check("p1score '-3' → clamped to 0", await score('-3') === 0);
     await run([raw, CMD, { command: 'teams', value: '3' }]);
-    check("teams 'four' → falls back to 2, as the C# does today", (await run([raw, CMD, { command: 'teams', value: 'four' }])).state.teams === 2);
+    const badTeams = await run([raw, CMD, { command: 'teams', value: 'four' }]);
+    check("teams 'four' is rejected: still 3 teams, no broadcast", badTeams.state.teams === 3 && badTeams.broadcasts === 0, JSON.stringify(badTeams.state.teams));
+    await run([raw, CMD, { command: 'teams', value: '2' }]);
+    // Length caps (names 64, titles 80), never through a surrogate pair.
+    const capped = await run([raw, CMD, { command: 'setmany', p1name: 'N'.repeat(70), header: 'T'.repeat(90), p2name: 'x'.repeat(63) + '\u{1F600}' }]);
+    check('names are cut to 64 characters and titles to 80, never through an emoji',
+      capped.state.p1name.length === 64 && capped.state.header.length === 80 && capped.state.p2name === 'x'.repeat(63), JSON.stringify([capped.state.p1name.length, capped.state.header.length, capped.state.p2name.length]));
 
     // The calling styles the C# accepts.
     check("chat style A: command '!p1+' → score +1", (await run([raw, CMD, { command: '!p1+' }])).state.p1score === 1);
@@ -406,6 +415,17 @@ async function main() {
     check("resolver: bare ISO 'fr' → 🇫🇷", globalThis.Nations.resolveFlag('fr') === '\u{1F1EB}\u{1F1F7}');
     check('resolver: emoji passthrough', globalThis.Nations.resolveFlag(GB) === GB);
     check("resolver: 'florpland' → null", globalThis.Nations.resolveFlag('florpland') === null);
+    // The same rules the C# is tested against in verify-cs.test.mjs (TAL-07).
+    const R = globalThis.Nations.resolveFlag;
+    const ENGLAND = '\u{1F3F4}\u{E0067}\u{E0062}\u{E0065}\u{E006E}\u{E0067}\u{E007F}', PIRATE = '\u{1F3F4}\u200D\u2620\uFE0F';
+    check("resolver: accents are folded ('Türkiye', 'Côte d’Ivoire', 'méxico')", R('Türkiye') === '\u{1F1F9}\u{1F1F7}' && R('Côte d’Ivoire') === '\u{1F1E8}\u{1F1EE}' && R('méxico') === '\u{1F1F2}\u{1F1FD}');
+    check("resolver: two letters that are no known code ('zz', 'en') → null", R('zz') === null && R('en') === null);
+    check("resolver: accented or foreign text that is no nation ('café', '日本') → null", R('café') === null && R('日本') === null);
+    check('resolver: a subdivision flag and a specialty flag pass through', R(ENGLAND) === ENGLAND && R(PIRATE) === PIRATE);
+    check('resolver: an emoji mixed with text → null', R(GB + ' x') === null);
+    check('the C# and the JS declare the same emoji ranges',
+      ['0x1F1E6', '0x1F1FF', '0x1F300', '0x1FAFF', '0x2600', '0x27BF', '0xFE0F', '0x200D', '0xE0020', '0xE007F'].every((h) => csSrc.includes(h))
+      && ['0x1F1E6', '0x1F1FF', '0x1F300', '0x1FAFF', '0x2600', '0x27BF', '0xFE0F', '0x200D', '0xE0020', '0xE007F'].every((h) => /isEmojiOnly/.test(String(globalThis.Nations.isEmojiOnly)) && String(globalThis.Nations.isEmojiOnly).includes(h)));
     // Names every plain object inherits must be unknown nations, not a crash (TAL-08).
     for (const word of ['constructor', 'toString', '__proto__', 'hasOwnProperty', 'valueOf']) {
       let got; try { got = globalThis.Nations.resolveFlag(word); } catch (e) { got = 'THREW ' + e.message; }
